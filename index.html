@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AnakCare - Monitoring Kegiatan</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6', // Blue 500
+                        secondary: '#10b981', // Emerald 500
+                        dark: '#0f172a', // Slate 900
+                        surface: '#f8fafc', // Slate 50
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; background-color: #e2e8f0; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .app-container {
+            width: 100%;
+            height: 100vh;
+            max-width: 480px;
+            margin: 0 auto;
+            background: #f8fafc;
+            position: relative;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .timeline-line::before {
+            content: '';
+            position: absolute;
+            left: 23px;
+            top: 30px;
+            bottom: -20px;
+            width: 2px;
+            background-color: #e2e8f0;
+            z-index: 0;
+        }
+        .timeline-item:last-child .timeline-line::before { display: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, setDoc, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'anakcare-app-v3';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { projectId: "demo-project" };
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.firebaseDb = db; window.firebaseAuth = auth; window.appId = appId;
+        window.collection = collection; window.doc = doc; window.setDoc = setDoc; window.addDoc = addDoc; window.updateDoc = updateDoc; window.onSnapshot = onSnapshot;
+        window.signInAnonymously = signInAnonymously; window.signInWithCustomToken = signInWithCustomToken;
+        window.__initial_auth_token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const Icon = ({ name, size = 24, className = '', color = 'currentColor' }) => {
+            const spanRef = useRef(null);
+            useEffect(() => {
+                if (spanRef.current && window.lucide) {
+                    spanRef.current.innerHTML = `<i data-lucide="${name}" class="${className}"></i>`;
+                    window.lucide.createIcons({
+                        root: spanRef.current,
+                        icons: { [name]: window.lucide.icons[name] },
+                        nameAttr: 'data-lucide',
+                        attrs: { width: size, height: size, stroke: color, 'stroke-width': 2 }
+                    });
+                }
+            }, [name, size, className, color]);
+            return <span ref={spanRef} className="inline-flex items-center justify-center"></span>;
+        };
+
+        const Toast = ({ message, type = 'info', onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 3000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+            const styles = { success: 'bg-emerald-50 text-emerald-800 border-emerald-200', error: 'bg-red-50 text-red-800 border-red-200', info: 'bg-blue-50 text-blue-800 border-blue-200' };
+            return (
+                <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-[60] w-11/12 max-w-sm fade-in">
+                    <div className={`p-4 rounded-xl border shadow-lg flex items-center justify-between ${styles[type]}`}>
+                        <span className="font-medium text-sm">{message}</span>
+                        <button onClick={onClose} className="p-1"><Icon name="X" size={16} /></button>
+                    </div>
+                </div>
+            );
+        };
+
+        const Modal = ({ isOpen, title, children, onClose }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[55] flex items-center justify-center p-4 fade-in">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
+                            <h3 className="font-bold text-slate-800">{title}</h3>
+                            <button onClick={onClose}><Icon name="X" size={20}/></button>
+                        </div>
+                        <div className="p-4 overflow-y-auto">{children}</div>
+                    </div>
+                </div>
+            );
+        };
+
+        const compressImage = (file) => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (e) => {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 600;
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.6));
+                };
+            };
+            reader.onerror = error => reject(error);
+        });
+
+        const getGPS = () => new Promise((resolve) => {
+            if (!navigator.geolocation) return resolve({ lat: -6.2088, lng: 106.8456, acc: 10, mock: true });
+            navigator.geolocation.getCurrentPosition(
+                pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }),
+                err => resolve({ lat: -6.2088, lng: 106.8456, acc: 10, mock: true }),
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
+        });
+
+        const LoginScreen = ({ onLogin, users, showToast }) => {
+            const [username, setUsername] = useState('');
+            const [pin, setPin] = useState('');
+            const handleLogin = (e) => {
+                e.preventDefault();
+                const user = users.find(u => u.username === username && u.pin === pin);
+                if (user) onLogin(user); else showToast("Username atau PIN salah", "error");
+            };
+            return (
+                <div className="flex-1 flex flex-col items-center justify-center bg-white p-6 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-blue-100 rounded-full blur-3xl -mr-20 -mt-20 opacity-60"></div>
+                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-100 rounded-full blur-3xl -ml-20 -mb-20 opacity-60"></div>
+                    <div className="w-full max-w-sm z-10">
+                        <div className="text-center mb-10">
+                            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
+                                <Icon name="Activity" size={32} color="white" />
+                            </div>
+                            <h1 className="text-3xl font-bold text-slate-800 tracking-tight">AnakCare</h1>
+                            <p className="text-slate-500 mt-1">Portal Monitoring Terpadu</p>
+                        </div>
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Username</label>
+                                <input type="text" value={username} onChange={e=>setUsername(e.target.value)} className="w-full mt-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" placeholder="Masukkan username" required />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">PIN Akses</label>
+                                <input type="password" value={pin} onChange={e=>setPin(e.target.value)} className="w-full mt-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all tracking-widest" placeholder="••••" required />
+                            </div>
+                            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-200 mt-6 active:scale-95">MASUK</button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        const ReportForm = ({ activity, onBack, onSubmit, showToast }) => {
+            const [photo, setPhoto] = useState(null);
+            const [gps, setGps] = useState(null);
+            const [notes, setNotes] = useState('');
+            const [loading, setLoading] = useState(false);
+
+            const handleCapture = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    try {
+                        const compressed = await compressImage(file);
+                        setPhoto(compressed);
+                    } catch (err) { showToast("Gagal memproses foto", "error"); }
+                }
+            };
+
+            const submit = () => {
+                if (activity.reqPhoto && !photo) return showToast("Foto wajib dilampirkan", "error");
+                setLoading(true);
+                getGPS().then(loc => {
+                    onSubmit({ activityId: activity.id, photo, gps: loc, notes, timestamp: new Date().toISOString() });
+                });
+            };
+
+            return (
+                <div className="flex-1 flex flex-col bg-slate-50 absolute inset-0 z-20">
+                    <div className="bg-white px-4 py-4 flex items-center gap-3 border-b shadow-sm sticky top-0 z-10">
+                        <button onClick={onBack} className="p-2 -ml-2 rounded-full hover:bg-slate-100"><Icon name="ArrowLeft" size={20} /></button>
+                        <h2 className="font-bold text-slate-800 text-lg flex-1">Lapor: {activity.title}</h2>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                        {activity.reqPhoto && (
+                            <div className="bg-white p-5 rounded-2xl border shadow-sm">
+                                <label className="font-bold text-slate-700 mb-3 block">1. Ambil Foto (Wajib)</label>
+                                {photo ? (
+                                    <div className="relative rounded-xl overflow-hidden bg-black aspect-video flex items-center justify-center group">
+                                        <img src={photo} className="max-h-full object-contain" alt="Bukti"/>
+                                        <button onClick={() => setPhoto(null)} className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-red-500 text-white rounded-full shadow-lg">
+                                            <Icon name="Trash2" size={16} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+                                        <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-2"><Icon name="Camera" size={24} /></div>
+                                        <span className="text-sm font-semibold text-slate-600">Buka Kamera</span>
+                                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleCapture} />
+                                    </label>
+                                )}
+                            </div>
+                        )}
+                        <div className="bg-white p-5 rounded-2xl border shadow-sm">
+                            <label className="font-bold text-slate-700 mb-3 block">2. Catatan (Opsional)</label>
+                            <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Ada yang ingin disampaikan?" className="w-full bg-slate-50 border rounded-xl p-4 focus:outline-none focus:border-blue-500 text-sm h-28 resize-none"></textarea>
+                        </div>
+                        <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex gap-3 items-start">
+                            <Icon name="Info" className="text-blue-500 shrink-0 mt-0.5" size={18}/>
+                            <p className="text-xs text-blue-700 leading-relaxed">Lokasi GPS Anda akan direkam secara otomatis saat laporan dikirim untuk memastikan keamanan.</p>
+                        </div>
+                    </div>
+                    <div className="p-5 bg-white border-t">
+                        <button onClick={submit} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 flex justify-center items-center gap-2 active:scale-95">
+                            {loading ? <Icon name="Loader" className="animate-spin" /> : <Icon name="Send" />}
+                            {loading ? 'MENGIRIM...' : 'KIRIM LAPORAN'}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const ChildDashboard = ({ user, activities, reports, onLogout, saveReport, updateUser, showToast }) => {
+            const [currentTab, setCurrentTab] = useState('beranda');
+            const [selectedAct, setSelectedAct] = useState(null);
+            
+            const mySchedule = activities.filter(a => a.childId === user.id).sort((a,b) => a.time.localeCompare(b.time));
+            
+            // Format Tanggal: "Kamis, 20 Agustus 2026"
+            const today = new Date();
+            const dateString = today.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+            // Profile Update Form State
+            const [editProfile, setEditProfile] = useState({ 
+                name: user.name, phone: user.phone || '', birthday: user.birthday || '', bio: user.bio || '' 
+            });
+
+            const handleReportSubmit = (data) => {
+                saveReport(data); setSelectedAct(null); showToast("Laporan terkirim!", "success");
+            };
+
+            const handlePhotoChange = async (e) => {
+                const file = e.target.files[0];
+                if(file) {
+                    try {
+                        const base64 = await compressImage(file);
+                        updateUser(user.id, { photoProfile: base64 });
+                        showToast("Foto profil diperbarui", "success");
+                    } catch(err) { showToast("Gagal update foto", "error"); }
+                }
+            };
+
+            const saveProfile = (e) => {
+                e.preventDefault();
+                updateUser(user.id, editProfile);
+                showToast("Profil tersimpan", "success");
+            };
+
+            const renderContent = () => {
+                if (currentTab === 'beranda') {
+                    const doneCount = mySchedule.filter(a => reports.some(r => r.activityId === a.id)).length;
+                    
+                    return (
+                        <div className="flex-1 overflow-y-auto pb-24 p-5 space-y-6 fade-in">
+                            {/* Header Beranda */}
+                            <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                                <div>
+                                    <h1 className="text-xl font-bold text-slate-800">Hai, {user.name.split(' ')[0]}!</h1>
+                                    <p className="text-xs font-medium text-slate-500 mt-0.5">{dateString}</p>
+                                </div>
+                                <label className="relative cursor-pointer group">
+                                    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-blue-100 bg-slate-100 flex items-center justify-center">
+                                        {user.photoProfile ? <img src={user.photoProfile} className="w-full h-full object-cover"/> : <Icon name="User" size={24} className="text-slate-400"/>}
+                                    </div>
+                                    <div className="absolute inset-0 bg-black/20 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Icon name="Camera" size={16} color="white"/>
+                                    </div>
+                                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange}/>
+                                </label>
+                            </div>
+
+                            {/* Progress Ringkasan */}
+                            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg shadow-blue-200">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h3 className="text-blue-100 text-sm font-medium">Progres Hari Ini</h3>
+                                        <div className="text-3xl font-bold mt-1">{doneCount} <span className="text-lg text-blue-200 font-normal">/ {mySchedule.length}</span></div>
+                                    </div>
+                                    <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md">
+                                        <Icon name="Target" size={28} color="white" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Grid Menu Kegiatan */}
+                            <div>
+                                <h3 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">Aktivitas Saya</h3>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {mySchedule.map(act => {
+                                        const isDone = reports.some(r => r.activityId === act.id);
+                                        return (
+                                            <div key={act.id} onClick={() => !isDone && setSelectedAct(act)}
+                                                className={`p-4 rounded-2xl border transition-all relative overflow-hidden ${isDone ? 'bg-slate-50 border-slate-200 opacity-75' : 'bg-white border-slate-200 shadow-sm active:scale-95 cursor-pointer'}`}>
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 ${isDone ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                    <Icon name={isDone ? 'Check' : act.icon} size={20} />
+                                                </div>
+                                                <h4 className={`font-bold text-sm ${isDone ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{act.title}</h4>
+                                                <p className="text-xs text-slate-400 mt-1">{act.time}</p>
+                                                {isDone && <div className="absolute top-3 right-3 w-2 h-2 rounded-full bg-emerald-500"></div>}
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+                
+                if (currentTab === 'jadwal') {
+                    return (
+                        <div className="flex-1 overflow-y-auto pb-24 p-5 fade-in">
+                            <h2 className="text-xl font-bold text-slate-800 mb-6">Jadwal Harian</h2>
+                            <div className="bg-white rounded-2xl p-5 border shadow-sm">
+                                <div className="space-y-6">
+                                    {mySchedule.map((act, index) => {
+                                        const isDone = reports.some(r => r.activityId === act.id);
+                                        return (
+                                            <div key={act.id} className="relative timeline-item flex gap-4 items-start z-10">
+                                                <div className="timeline-line">
+                                                    <div className={`w-12 h-12 rounded-full border-4 border-white flex-shrink-0 flex items-center justify-center relative z-10 shadow-sm
+                                                        ${isDone ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                                        <Icon name={isDone ? 'Check' : act.icon} size={20} />
+                                                    </div>
+                                                </div>
+                                                <div className="pt-2 flex-1">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <h4 className="font-bold text-slate-800 text-sm">{act.title}</h4>
+                                                            <p className="text-xs text-slate-500 font-medium">{act.time}</p>
+                                                        </div>
+                                                        {isDone ? 
+                                                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">SELESAI</span> : 
+                                                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded">BELUM</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
+                if (currentTab === 'profil') {
+                    return (
+                        <div className="flex-1 overflow-y-auto pb-24 p-5 fade-in">
+                            <h2 className="text-xl font-bold text-slate-800 mb-6">Profil Saya</h2>
+                            
+                            <div className="bg-white rounded-2xl p-5 border shadow-sm mb-6 flex flex-col items-center">
+                                <label className="relative cursor-pointer mb-4">
+                                    <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-50 bg-slate-100 shadow-md">
+                                        {user.photoProfile ? <img src={user.photoProfile} className="w-full h-full object-cover"/> : <Icon name="User" size={48} className="text-slate-300 mt-4 mx-auto"/>}
+                                    </div>
+                                    <div className="absolute bottom-0 right-0 bg-blue-600 text-white p-2 rounded-full border-2 border-white shadow-sm"><Icon name="Camera" size={14}/></div>
+                                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange}/>
+                                </label>
+                                <h3 className="font-bold text-lg text-slate-800">@{user.username}</h3>
+                                <p className="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full mt-2">Pelajar SMP</p>
+                            </div>
+
+                            <form onSubmit={saveProfile} className="bg-white rounded-2xl p-5 border shadow-sm mb-6 space-y-4">
+                                <h4 className="font-bold text-slate-700 text-sm border-b pb-2">Biodata</h4>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">Nama Lengkap</label>
+                                    <input type="text" value={editProfile.name} onChange={e=>setEditProfile({...editProfile, name: e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500"/>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">No. Telepon</label>
+                                    <input type="tel" value={editProfile.phone} onChange={e=>setEditProfile({...editProfile, phone: e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500" placeholder="08..."/>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">Tanggal Lahir</label>
+                                    <input type="date" value={editProfile.birthday} onChange={e=>setEditProfile({...editProfile, birthday: e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500"/>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">Status / Bio</label>
+                                    <input type="text" value={editProfile.bio} onChange={e=>setEditProfile({...editProfile, bio: e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500" placeholder="Sedang sibuk belajar..."/>
+                                </div>
+                                <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl mt-2 active:scale-95">Simpan Profil</button>
+                            </form>
+
+                            <button onClick={onLogout} className="w-full bg-red-50 text-red-600 font-bold py-3.5 rounded-xl border border-red-100 flex items-center justify-center gap-2 active:scale-95">
+                                <Icon name="LogOut" size={18} /> Keluar Akun
+                            </button>
+                            <p className="text-center text-xs font-medium text-slate-400 mt-6">Versi 1.0</p>
+                        </div>
+                    );
+                }
+            };
+
+            return (
+                <div className="flex-1 flex flex-col relative h-full">
+                    {selectedAct ? (
+                        <ReportForm activity={selectedAct} onBack={() => setSelectedAct(null)} onSubmit={handleReportSubmit} showToast={showToast} />
+                    ) : (
+                        <>
+                            {renderContent()}
+                            {/* Bottom Navbar */}
+                            <div className="absolute bottom-0 left-0 w-full bg-white border-t px-6 py-2 flex justify-between items-center z-10 safe-area-bottom pb-4 shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
+                                <button onClick={() => setCurrentTab('beranda')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'beranda' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                                    <Icon name="Home" size={24} className={currentTab === 'beranda' ? 'fill-blue-100' : ''} />
+                                    <span className="text-[10px] font-bold">Beranda</span>
+                                </button>
+                                <button onClick={() => setCurrentTab('jadwal')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'jadwal' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                                    <Icon name="Calendar" size={24} />
+                                    <span className="text-[10px] font-bold">Jadwal</span>
+                                </button>
+                                <button onClick={() => setCurrentTab('profil')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'profil' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                                    <Icon name="User" size={24} />
+                                    <span className="text-[10px] font-bold">Profil</span>
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            );
+        };
+
+        const ParentDashboard = ({ user, users, activities, reports, onLogout, addUser, showToast }) => {
+            const [currentTab, setCurrentTab] = useState('dashboard');
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [newChild, setNewChild] = useState({ name: '', user: '', pin: '' });
+            const [selectedPhoto, setSelectedPhoto] = useState(null);
+            
+            const childrenList = users.filter(u => u.role === 'anak' && u.parentId === user.id);
+            const [selectedChildId, setSelectedChildId] = useState(childrenList[0]?.id || null);
+
+            const handleAddChild = (e) => {
+                e.preventDefault();
+                if (users.find(u => u.username === newChild.user)) return showToast("Username sudah dipakai", "error");
+                const childId = 'child_' + Date.now();
+                addUser({
+                    id: childId, name: newChild.name, username: newChild.user, pin: newChild.pin, role: 'anak', parentId: user.id
+                });
+                setShowAddModal(false); setNewChild({ name: '', user: '', pin: '' });
+                if (!selectedChildId) setSelectedChildId(childId);
+                showToast("Akun anak berhasil ditambahkan!", "success");
+            };
+
+            const childActivities = activities.filter(a => a.childId === selectedChildId).sort((a,b) => a.time.localeCompare(b.time));
+            const childReports = reports.filter(r => childActivities.some(a => a.id === r.activityId));
+            const activeChild = users.find(u => u.id === selectedChildId);
+
+            return (
+                <div className="flex-1 flex flex-col h-full bg-slate-50 relative">
+                    {/* Top App Bar */}
+                    <div className="bg-slate-900 text-white px-5 py-4 flex justify-between items-center shadow-md z-10 sticky top-0">
+                        <div>
+                            <h1 className="font-bold text-lg flex items-center gap-2"><Icon name="LayoutDashboard" size={20}/> Portal Admin</h1>
+                            <p className="text-xs text-slate-400 mt-0.5">Masuk sebagai: {user.name}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pb-24 fade-in">
+                        {currentTab === 'dashboard' && (
+                            <div className="p-5">
+                                {/* Child Selector Component */}
+                                <div className="mb-6">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Pantau Anak</h2>
+                                    </div>
+                                    <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2">
+                                        {childrenList.map(child => (
+                                            <button key={child.id} onClick={() => setSelectedChildId(child.id)}
+                                                className={`flex-shrink-0 px-4 py-3 rounded-2xl border font-bold text-sm transition-all flex items-center gap-3
+                                                ${selectedChildId === child.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center overflow-hidden border-2 ${selectedChildId === child.id ? 'border-white/30' : 'border-slate-100'}`}>
+                                                    {child.photoProfile ? <img src={child.photoProfile} className="w-full h-full object-cover"/> : <Icon name="User" size={16}/>}
+                                                </div>
+                                                {child.name.split(' ')[0]}
+                                            </button>
+                                        ))}
+                                        {childrenList.length === 0 && <div className="text-sm text-slate-500 bg-white p-3 rounded-xl border">Belum ada data anak.</div>}
+                                    </div>
+                                </div>
+
+                                {selectedChildId && activeChild && (
+                                    <div className="space-y-4">
+                                        <div className="bg-white rounded-2xl p-5 border shadow-sm flex items-center justify-between">
+                                            <div>
+                                                <p className="text-sm text-slate-500 font-medium mb-1">Status Hari Ini</p>
+                                                <div className="text-2xl font-bold text-slate-800">{childReports.length} <span className="text-lg text-slate-400 font-normal">/ {childActivities.length} Selesai</span></div>
+                                            </div>
+                                            <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500">
+                                                <Icon name="Activity" size={28} />
+                                            </div>
+                                        </div>
+
+                                        <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider pt-2">Laporan Kegiatan</h3>
+                                        <div className="space-y-3">
+                                            {childActivities.map(act => {
+                                                const report = reports.find(r => r.activityId === act.id);
+                                                return (
+                                                    <div key={act.id} className="bg-white rounded-2xl border shadow-sm p-4">
+                                                        <div className="flex justify-between items-start mb-3">
+                                                            <div className="flex gap-3 items-center">
+                                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${report ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                                                                    <Icon name={act.icon} size={20} />
+                                                                </div>
+                                                                <div>
+                                                                    <h4 className="font-bold text-slate-800 text-sm">{act.title}</h4>
+                                                                    <p className="text-xs text-slate-500">{act.time}</p>
+                                                                </div>
+                                                            </div>
+                                                            {report ? <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-xs font-bold border border-emerald-100">SELESAI</span> : 
+                                                                    <span className="px-2 py-1 bg-slate-50 text-slate-500 rounded text-xs font-bold border">BELUM</span>}
+                                                        </div>
+                                                        
+                                                        {report && (
+                                                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex gap-2">
+                                                                {report.photo && (
+                                                                    <button onClick={() => setSelectedPhoto(report.photo)} className="flex-1 bg-white border p-2 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center gap-2 hover:bg-slate-100">
+                                                                        <Icon name="Image" size={14} className="text-blue-500"/> Foto
+                                                                    </button>
+                                                                )}
+                                                                {report.gps && !report.gps.mock && (
+                                                                    <a href={`https://www.google.com/maps/search/?api=1&query=${report.gps.lat},${report.gps.lng}`} target="_blank" className="flex-1 bg-white border p-2 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center gap-2 hover:bg-slate-100">
+                                                                        <Icon name="MapPin" size={14} className="text-red-500"/> Lokasi
+                                                                    </a>
+                                                                )}
+                                                                {report.notes && (
+                                                                    <div className="flex-1 bg-white border p-2 rounded-lg text-xs text-slate-600 italic flex items-center justify-center line-clamp-1" title={report.notes}>
+                                                                        "{report.notes}"
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {currentTab === 'galeri' && (
+                            <div className="p-5">
+                                <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-4">Galeri Foto Anak</h2>
+                                {selectedChildId ? (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {childReports.filter(r => r.photo).map(report => {
+                                            const act = childActivities.find(a => a.id === report.activityId);
+                                            return (
+                                                <div key={report.id} onClick={() => setSelectedPhoto(report.photo)} className="relative aspect-square rounded-2xl overflow-hidden shadow-sm border bg-slate-200 cursor-pointer group">
+                                                    <img src={report.photo} className="w-full h-full object-cover"/>
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-100">
+                                                        <div className="absolute bottom-2 left-2 right-2">
+                                                            <p className="text-white text-xs font-bold leading-tight">{act?.title}</p>
+                                                            <p className="text-slate-300 text-[10px]">{new Date(report.timestamp).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                        {childReports.filter(r => r.photo).length === 0 && <p className="text-sm text-slate-500 col-span-2">Belum ada foto yang dilaporkan.</p>}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-500">Pilih anak terlebih dahulu di Dashboard.</p>
+                                )}
+                            </div>
+                        )}
+
+                        {currentTab === 'pengaturan' && (
+                            <div className="p-5 space-y-6">
+                                <div>
+                                    <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-3">Profil Admin</h3>
+                                    <div className="bg-white p-4 rounded-2xl border flex items-center gap-4">
+                                        <div className="w-14 h-14 bg-slate-800 text-white rounded-full flex items-center justify-center font-bold text-xl">{user.name.charAt(0)}</div>
+                                        <div>
+                                            <p className="font-bold text-slate-800">{user.name}</p>
+                                            <p className="text-xs text-slate-500">Username: {user.username}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Kelola Anak</h3>
+                                        <button onClick={() => setShowAddModal(true)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg flex items-center gap-1"><Icon name="Plus" size={14}/> Tambah</button>
+                                    </div>
+                                    <div className="bg-white border rounded-2xl divide-y">
+                                        {childrenList.map(child => (
+                                            <div key={child.id} className="p-4 flex justify-between items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <Icon name="User" size={18} className="text-slate-400"/>
+                                                    <div>
+                                                        <p className="font-bold text-slate-700 text-sm">{child.name}</p>
+                                                        <p className="text-[10px] text-slate-400">User: {child.username}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <button onClick={onLogout} className="w-full bg-red-50 text-red-600 font-bold py-3.5 rounded-xl border border-red-100 flex items-center justify-center gap-2">
+                                    <Icon name="LogOut" size={18} /> Keluar Admin
+                                </button>
+                                <p className="text-center text-xs font-medium text-slate-400 mt-6">AnakCare Admin v1.0</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Photo Viewer Modal */}
+                    {selectedPhoto && (
+                        <div className="fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-4 fade-in" onClick={() => setSelectedPhoto(null)}>
+                            <button className="absolute top-6 right-6 text-white bg-white/20 p-2 rounded-full"><Icon name="X" size={24}/></button>
+                            <img src={selectedPhoto} className="max-w-full max-h-[85vh] rounded-lg object-contain" onClick={e=>e.stopPropagation()} />
+                        </div>
+                    )}
+
+                    {/* Add Child Modal */}
+                    <Modal isOpen={showAddModal} title="Tambah Anak Baru" onClose={() => setShowAddModal(false)}>
+                        <form onSubmit={handleAddChild} className="space-y-4 pt-2">
+                            <div><label className="text-xs font-bold text-slate-500 mb-1 block">Nama Anak</label><input type="text" value={newChild.name} onChange={e=>setNewChild({...newChild, name:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-blue-500" required /></div>
+                            <div><label className="text-xs font-bold text-slate-500 mb-1 block">Username Login</label><input type="text" value={newChild.user} onChange={e=>setNewChild({...newChild, user:e.target.value.toLowerCase().replace(/\s/g,'')})} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-blue-500" required /></div>
+                            <div><label className="text-xs font-bold text-slate-500 mb-1 block">PIN (Min 4)</label><input type="password" value={newChild.pin} onChange={e=>setNewChild({...newChild, pin:e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-blue-500" required minLength="4" /></div>
+                            <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl mt-2">Simpan Akun</button>
+                        </form>
+                    </Modal>
+
+                    {/* Admin Bottom Nav */}
+                    <div className="absolute bottom-0 left-0 w-full bg-white border-t px-6 py-2 flex justify-around items-center z-10 safe-area-bottom pb-4 shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
+                        <button onClick={() => setCurrentTab('dashboard')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'dashboard' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                            <Icon name="LayoutDashboard" size={24} className={currentTab === 'dashboard' ? 'fill-blue-100' : ''} />
+                            <span className="text-[10px] font-bold">Dashboard</span>
+                        </button>
+                        <button onClick={() => setCurrentTab('galeri')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'galeri' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                            <Icon name="Images" size={24} className={currentTab === 'galeri' ? 'fill-blue-100' : ''} />
+                            <span className="text-[10px] font-bold">Cek Foto</span>
+                        </button>
+                        <button onClick={() => setCurrentTab('pengaturan')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'pengaturan' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                            <Icon name="Settings" size={24} />
+                            <span className="text-[10px] font-bold">Pengaturan</span>
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [toast, setToast] = useState(null);
+            const showToast = (message, type = 'info') => setToast({ message, type });
+
+            const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+            const [currentUser, setCurrentUser] = useState(null);
+            const [users, setUsers] = useState([]);
+            const [activities, setActivities] = useState([]);
+            const [reports, setReports] = useState([]);
+
+            // Default Data (V2)
+            const DEFAULT_USERS = [
+                { id: 'parent1', username: 'ayah', pin: '1234', role: 'ortu', name: 'Bapak Budi' },
+                { id: 'child1', username: 'siswa01', pin: '1234', role: 'anak', name: 'Andi Setiawan', parentId: 'parent1', bio: 'Rajin Pangkal Pandai' }
+            ];
+            
+            // Default expanded schedule
+            const createDefaultSchedule = (childId) => [
+                { id: `act1_${childId}`, childId, title: 'Pulang Sekolah', time: '14:00', icon: 'Home', reqPhoto: true, reqGps: true },
+                { id: `act2_${childId}`, childId, title: 'Makan Siang', time: '14:30', icon: 'Utensils', reqPhoto: true, reqGps: false },
+                { id: `act3_${childId}`, childId, title: 'Istirahat / Main', time: '15:00', icon: 'Gamepad2', reqPhoto: false, reqGps: false },
+                { id: `act4_${childId}`, childId, title: 'Les Tambahan', time: '16:00', icon: 'BookOpen', reqPhoto: true, reqGps: true },
+                { id: `act5_${childId}`, childId, title: 'Mandi Sore', time: '17:30', icon: 'Droplets', reqPhoto: true, reqGps: false },
+                { id: `act6_${childId}`, childId, title: 'Makan Malam', time: '18:30', icon: 'Utensils', reqPhoto: false, reqGps: false },
+                { id: `act7_${childId}`, childId, title: 'Belajar Mandiri', time: '19:30', icon: 'Book', reqPhoto: true, reqGps: false },
+                { id: `act8_${childId}`, childId, title: 'Tidur Malam', time: '21:00', icon: 'Moon', reqPhoto: true, reqGps: false }
+            ];
+
+            useEffect(() => {
+                const initAuth = async () => {
+                    try {
+                        if (window.__initial_auth_token) await window.signInWithCustomToken(window.firebaseAuth, window.__initial_auth_token);
+                        else await window.signInAnonymously(window.firebaseAuth);
+                    } catch (error) { showToast("Koneksi Database Gagal", "error"); setIsCheckingAuth(false); }
+                };
+                initAuth();
+
+                const unsubscribeAuth = window.firebaseAuth.onAuthStateChanged(user => {
+                    if (user) {
+                        const usersRef = window.collection(window.firebaseDb, 'artifacts', window.appId, 'public', 'data', 'users');
+                        window.onSnapshot(usersRef, (snapshot) => {
+                            if (snapshot.empty) DEFAULT_USERS.forEach(u => window.setDoc(window.doc(usersRef, u.id), u));
+                            else {
+                                const loadedUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                                setUsers(loadedUsers);
+                                // Update currentUser state if profile changed
+                                if(currentUser) {
+                                    const updated = loadedUsers.find(u => u.id === currentUser.id);
+                                    if(updated) setCurrentUser(updated);
+                                }
+                            }
+                        });
+
+                        const actsRef = window.collection(window.firebaseDb, 'artifacts', window.appId, 'public', 'data', 'activities');
+                        window.onSnapshot(actsRef, (snapshot) => {
+                            if (snapshot.empty) createDefaultSchedule('child1').forEach(a => window.setDoc(window.doc(actsRef, a.id), a));
+                            else setActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                        });
+
+                        const repRef = window.collection(window.firebaseDb, 'artifacts', window.appId, 'public', 'data', 'reports');
+                        window.onSnapshot(repRef, (snapshot) => {
+                            setReports(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                            setIsCheckingAuth(false);
+                        });
+                    }
+                });
+                return () => unsubscribeAuth();
+            }, []);
+
+            const addReportToDb = async (reportData) => {
+                const repRef = window.collection(window.firebaseDb, 'artifacts', window.appId, 'public', 'data', 'reports');
+                await window.addDoc(repRef, { ...reportData, childId: currentUser.id });
+            };
+
+            const addUserToDb = async (userData) => {
+                const usersRef = window.collection(window.firebaseDb, 'artifacts', window.appId, 'public', 'data', 'users');
+                await window.setDoc(window.doc(usersRef, userData.id), userData);
+                const actsRef = window.collection(window.firebaseDb, 'artifacts', window.appId, 'public', 'data', 'activities');
+                createDefaultSchedule(userData.id).forEach(async (act) => await window.setDoc(window.doc(actsRef, act.id), act));
+            };
+
+            const updateUserInDb = async (userId, data) => {
+                const userRef = window.doc(window.firebaseDb, 'artifacts', window.appId, 'public', 'data', 'users', userId);
+                await window.updateDoc(userRef, data);
+            };
+
+            if (isCheckingAuth) return <div className="app-container items-center justify-center"><Icon name="Loader" size={40} className="text-blue-500 animate-spin" /></div>;
+
+            return (
+                <div className="app-container">
+                    {!currentUser ? (
+                        <LoginScreen onLogin={u => setCurrentUser(u)} users={users} showToast={showToast} />
+                    ) : currentUser.role === 'anak' ? (
+                        <ChildDashboard user={currentUser} activities={activities} reports={reports} onLogout={() => setCurrentUser(null)} saveReport={addReportToDb} updateUser={updateUserInDb} showToast={showToast} />
+                    ) : (
+                        <ParentDashboard user={currentUser} users={users} activities={activities} reports={reports} onLogout={() => setCurrentUser(null)} addUser={addUserToDb} showToast={showToast} />
+                    )}
+                    {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
