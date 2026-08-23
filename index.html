@@ -164,7 +164,6 @@
                     return;
                 }
                 
-                // FIXED BUG: Membandingkan string secara eksplisit & cek lowercase maupun camelCase
                 const user = users.find(u => 
                     (u.username === username || u.Username === username) && 
                     String(u.pin || u.PIN) === String(pin)
@@ -176,7 +175,6 @@
 
             return (
                 <div className="flex-1 flex flex-col items-center justify-center relative overflow-hidden h-full bg-slate-50">
-                    {/* Abstract Background Elements */}
                     <div className="absolute top-[-10%] right-[-10%] w-80 h-80 bg-indigo-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
                     <div className="absolute bottom-[-10%] left-[-10%] w-80 h-80 bg-emerald-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
                     
@@ -304,17 +302,58 @@
         const ChildDashboard = ({ user, activities, reports, onLogout, saveReport, updateUser, showToast, isSyncing }) => {
             const [currentTab, setCurrentTab] = useState('beranda');
             const [selectedAct, setSelectedAct] = useState(null);
+            const [currentTime, setCurrentTime] = useState(new Date());
+
+            // State untuk form biodata
+            const [editBio, setEditBio] = useState({
+                name: user.name || user.Name || '',
+                phone: user.phone || user.Phone || '',
+                birthday: user.birthday || user.Birthday || '',
+                bio: user.bio || user.Bio || '',
+                photoProfile: user.photoProfile || user.PhotoProfile || ''
+            });
+            const [isEditingBio, setIsEditingBio] = useState(false);
+            const [isSavingBio, setIsSavingBio] = useState(false);
             
-            // Handle Casing Aman
             const userId = user.id || user.ID;
             const mySchedule = activities.filter(a => String(a.childId || a.ChildID) === String(userId));
             const dateString = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
+
+            // Update jam setiap detik
+            useEffect(() => {
+                const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+                return () => clearInterval(timer);
+            }, []);
 
             const handleReportSubmit = async (data) => {
                 const success = await saveReport(data); 
                 if(success) {
                     setSelectedAct(null); 
                     showToast("Mantap! Laporan terkirim \uD83C\uDF89", "success");
+                }
+            };
+
+            const handleBioImageUpload = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    try {
+                        const compressed = await compressImage(file);
+                        setEditBio(prev => ({ ...prev, photoProfile: compressed }));
+                    } catch (err) { showToast("Gagal memproses foto", "error"); }
+                }
+            };
+
+            const handleSaveBio = async (e) => {
+                e.preventDefault();
+                setIsSavingBio(true);
+                try {
+                    await updateUser(userId, editBio);
+                    showToast("Profil berhasil diperbarui!", "success");
+                    setIsEditingBio(false);
+                } catch (error) {
+                    showToast("Gagal menyimpan profil.", "error");
+                } finally {
+                    setIsSavingBio(false);
                 }
             };
 
@@ -330,7 +369,13 @@
                             <div className="flex justify-between items-center px-1">
                                 <div>
                                     <p className="text-sm font-bold text-slate-500 uppercase tracking-wide">{dateString}</p>
-                                    <h1 className="text-2xl font-extrabold text-slate-800">Halo, {(user.name || user.Name || '').split(' ')[0]}! \uD83D\uDC4B</h1>
+                                    <div className="flex items-center gap-2">
+                                        <h1 className="text-2xl font-extrabold text-slate-800">Halo, {(user.name || user.Name || '').split(' ')[0]}!</h1>
+                                        {/* Ganti text tidak jelas dengan jam realtime */}
+                                        <div className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 mt-1">
+                                            <Icon name="Clock" size={12}/> {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                        </div>
+                                    </div>
                                 </div>
                                 <div className="w-14 h-14 rounded-full overflow-hidden border-[3px] border-white shadow-md bg-slate-200">
                                     {user.photoProfile || user.PhotoProfile ? 
@@ -394,18 +439,93 @@
                 
                 if (currentTab === 'profil') {
                     return (
-                        <div className="flex-1 overflow-y-auto pb-28 p-6 fade-in h-full bg-white">
-                            <div className="flex flex-col items-center mt-6 mb-8">
-                                <div className="w-24 h-24 rounded-full border-4 border-indigo-50 bg-slate-100 overflow-hidden mb-4 shadow-sm relative group">
-                                    {user.photoProfile || user.PhotoProfile ? <img src={user.photoProfile || user.PhotoProfile} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-400"><Icon name="User" size={40}/></div>}
-                                </div>
-                                <h2 className="text-xl font-extrabold text-slate-800">{user.name || user.Name}</h2>
-                                <p className="text-sm font-semibold text-slate-500 px-3 py-1 bg-slate-100 rounded-full mt-2 uppercase tracking-wider">{user.role || user.Role}</p>
-                            </div>
+                        <div className="flex-1 overflow-y-auto pb-28 p-6 fade-in h-full bg-slate-50">
+                            {isEditingBio ? (
+                                <form onSubmit={handleSaveBio} className="space-y-6 slide-up bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h2 className="font-extrabold text-slate-800">Edit Profil</h2>
+                                        <button type="button" onClick={() => setIsEditingBio(false)} className="text-slate-400 hover:text-slate-600"><Icon name="X" size={20}/></button>
+                                    </div>
 
-                            <button onClick={onLogout} className="w-full bg-rose-50 text-rose-600 font-bold py-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-rose-100 transition-colors">
-                                <Icon name="LogOut" size={20} /> Keluar Aplikasi
-                            </button>
+                                    {/* Upload Foto Profil */}
+                                    <div className="flex flex-col items-center">
+                                        <div className="relative group cursor-pointer">
+                                            <div className="w-24 h-24 rounded-full border-4 border-indigo-50 bg-slate-100 overflow-hidden shadow-sm">
+                                                {editBio.photoProfile ? <img src={editBio.photoProfile} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-400"><Icon name="User" size={40}/></div>}
+                                            </div>
+                                            <label className="absolute bottom-0 right-0 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:bg-indigo-700 transition-colors">
+                                                <Icon name="Camera" size={14} />
+                                                <input type="file" accept="image/*" className="hidden" onChange={handleBioImageUpload} />
+                                            </label>
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-2">Ganti Foto Profil</p>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Nama Lengkap</label>
+                                            <input type="text" value={editBio.name} onChange={e=>setEditBio({...editBio, name:e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 mt-1.5 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" required/>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Nomor Telepon</label>
+                                            <input type="tel" value={editBio.phone} onChange={e=>setEditBio({...editBio, phone:e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 mt-1.5 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="08xxxxxxxxxx"/>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Tanggal Lahir</label>
+                                            <input type="date" value={editBio.birthday} onChange={e=>setEditBio({...editBio, birthday:e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 mt-1.5 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Bio / Status</label>
+                                            <textarea value={editBio.bio} onChange={e=>setEditBio({...editBio, bio:e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 mt-1.5 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-24" placeholder="Ceritakan sedikit tentang kamu..."></textarea>
+                                        </div>
+                                    </div>
+                                    
+                                    <button type="submit" disabled={isSavingBio} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-4 rounded-2xl shadow-lg shadow-indigo-200 flex justify-center items-center gap-2 transition-all disabled:opacity-70">
+                                        {isSavingBio ? <Icon name="Loader" className="animate-spin" /> : <Icon name="Save" />}
+                                        {isSavingBio ? 'MENYIMPAN...' : 'SIMPAN PROFIL'}
+                                    </button>
+                                </form>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 text-center relative">
+                                        <button onClick={() => setIsEditingBio(true)} className="absolute top-4 right-4 text-indigo-600 bg-indigo-50 p-2 rounded-xl hover:bg-indigo-100 transition-colors">
+                                            <Icon name="Edit3" size={18} />
+                                        </button>
+                                        <div className="w-24 h-24 mx-auto rounded-full border-4 border-indigo-50 bg-slate-100 overflow-hidden mb-4 shadow-sm">
+                                            {user.photoProfile || user.PhotoProfile ? <img src={user.photoProfile || user.PhotoProfile} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-400"><Icon name="User" size={40}/></div>}
+                                        </div>
+                                        <h2 className="text-xl font-extrabold text-slate-800">{user.name || user.Name}</h2>
+                                        <p className="text-sm text-slate-500 mt-1">{user.bio || user.Bio || 'Belum ada bio'}</p>
+                                        
+                                        <div className="mt-6 grid grid-cols-2 gap-4 text-left">
+                                            <div className="bg-slate-50 p-3 rounded-2xl">
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase">Telepon</p>
+                                                <p className="text-sm font-semibold text-slate-700 mt-1">{user.phone || user.Phone || '-'}</p>
+                                            </div>
+                                            <div className="bg-slate-50 p-3 rounded-2xl">
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase">Ulang Tahun</p>
+                                                <p className="text-sm font-semibold text-slate-700 mt-1">{user.birthday || user.Birthday ? new Date(user.birthday || user.Birthday).toLocaleDateString('id-ID') : '-'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100">
+                                        <div className="flex items-center justify-between p-2">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500"><Icon name="UserCircle" size={20}/></div>
+                                                <div>
+                                                    <p className="text-xs font-bold text-slate-400">Username Login</p>
+                                                    <p className="font-semibold text-slate-700">{user.username || user.Username}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <button onClick={onLogout} className="w-full bg-rose-50 text-rose-600 font-bold py-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-rose-100 transition-colors">
+                                        <Icon name="LogOut" size={20} /> Keluar Aplikasi
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     );
                 }
@@ -436,6 +556,10 @@
             const [newChild, setNewChild] = useState({ name: '', user: '', pin: '' });
             const [selectedPhoto, setSelectedPhoto] = useState(null);
             
+            // Pagination state untuk galeri
+            const [galleryPage, setGalleryPage] = useState(1);
+            const itemsPerPage = 10;
+            
             const userId = user.id || user.ID;
             const childrenList = users.filter(u => (u.role || u.Role) === 'anak' && String(u.parentId || u.ParentID) === String(userId));
             const [selectedChildId, setSelectedChildId] = useState(childrenList[0]?.id || childrenList[0]?.ID || null);
@@ -455,7 +579,16 @@
             };
 
             const childActivities = activities.filter(a => String(a.childId || a.ChildID) === String(selectedChildId));
-            const childReports = reports.filter(r => childActivities.some(a => String(a.id || a.ID) === String(r.activityId || r.JadwalID)));
+            
+            // Filter laporan yang memiliki foto (Hanya untuk galeri)
+            const childReportsWithPhoto = reports.filter(r => 
+                childActivities.some(a => String(a.id || a.ID) === String(r.activityId || r.JadwalID)) && 
+                (r.photo || r.PhotoURL)
+            ).sort((a, b) => new Date(b.timestamp || b.Timestamp) - new Date(a.timestamp || a.Timestamp)); // Urutkan terbaru
+
+            // Data untuk halaman saat ini
+            const totalPages = Math.ceil(childReportsWithPhoto.length / itemsPerPage);
+            const currentGalleryItems = childReportsWithPhoto.slice((galleryPage - 1) * itemsPerPage, galleryPage * itemsPerPage);
 
             return (
                 <div className="flex-1 flex flex-col h-full bg-slate-50 relative">
@@ -497,7 +630,7 @@
                                             <div>
                                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Status Laporan</p>
                                                 <div className="text-3xl font-black text-slate-800 flex items-baseline gap-1">
-                                                    {childReports.length} <span className="text-lg text-slate-400 font-medium">/ {childActivities.length}</span>
+                                                    {reports.filter(r => childActivities.some(a => String(a.id || a.ID) === String(r.activityId || r.JadwalID))).length} <span className="text-lg text-slate-400 font-medium">/ {childActivities.length}</span>
                                                 </div>
                                             </div>
                                             <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 border border-emerald-100">
@@ -509,7 +642,7 @@
                                         
                                         <div className="space-y-3">
                                             {childActivities.map(act => {
-                                                const report = childReports.find(r => String(r.activityId || r.JadwalID) === String(act.id || act.ID));
+                                                const report = reports.find(r => String(r.activityId || r.JadwalID) === String(act.id || act.ID));
                                                 return (
                                                     <div key={act.id || act.ID} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 transition-all hover:shadow-md">
                                                         <div className="flex justify-between items-start mb-3">
@@ -549,24 +682,58 @@
 
                         {currentTab === 'galeri' && (
                             <div className="p-5 h-full">
-                                <h2 className="font-extrabold text-slate-800 text-sm uppercase tracking-widest mb-5 flex items-center gap-2"><Icon name="Image" size={16} className="text-indigo-500"/> Galeri Foto</h2>
+                                <h2 className="font-extrabold text-slate-800 text-sm uppercase tracking-widest mb-5 flex items-center gap-2"><Icon name="Image" size={16} className="text-indigo-500"/> Galeri Foto (1-10)</h2>
                                 {selectedChildId ? (
-                                    <div className="grid grid-cols-2 gap-4">
-                                        {childReports.filter(r => r.photo || r.PhotoURL).map(report => {
-                                            const photoSrc = report.photo || report.PhotoURL;
-                                            return (
-                                                <div key={report.id || report.ID} onClick={() => setSelectedPhoto(photoSrc)} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-200 bg-slate-200 cursor-pointer shadow-sm hover:shadow-md transition-shadow group">
-                                                    <img src={photoSrc} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"/>
-                                                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent flex items-end p-3">
-                                                        <p className="text-white text-xs font-bold truncate w-full flex items-center gap-1"><Icon name="Clock" size={10}/> {new Date(report.timestamp || report.Timestamp).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}</p>
+                                    <div className="space-y-6">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {currentGalleryItems.map(report => {
+                                                const photoSrc = report.photo || report.PhotoURL;
+                                                const reportDate = new Date(report.timestamp || report.Timestamp);
+                                                return (
+                                                    <div key={report.id || report.ID} onClick={() => setSelectedPhoto(photoSrc)} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 cursor-pointer shadow-sm hover:shadow-md transition-shadow group">
+                                                        {/* Error handling untuk gambar yang rusak */}
+                                                        <img src={photoSrc} 
+                                                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                                             onError={(e) => {
+                                                                e.target.onerror = null; 
+                                                                e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Ccircle cx='8.5' cy='8.5' r='1.5'%3E%3C/circle%3E%3Cpolyline points='21 15 16 10 5 21'%3E%3C/polyline%3E%3Cline x1='3' y1='3' x2='21' y2='21' stroke='%23f43f5e'%3E%3C/line%3E%3C/svg%3E";
+                                                                e.target.className = "w-1/3 h-1/3 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-50";
+                                                             }}
+                                                        />
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-transparent to-transparent flex flex-col justify-end p-3">
+                                                            {/* Menambahkan Tanggal dan Jam */}
+                                                            <p className="text-white text-[10px] font-medium opacity-90 truncate">{reportDate.toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'})}</p>
+                                                            <p className="text-white text-xs font-bold truncate flex items-center gap-1"><Icon name="Clock" size={10}/> {reportDate.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}</p>
+                                                        </div>
                                                     </div>
+                                                )
+                                            })}
+                                            {childReportsWithPhoto.length === 0 && (
+                                                <div className="col-span-2 text-center mt-10 p-8 border-2 border-dashed border-slate-200 rounded-3xl">
+                                                    <Icon name="ImageOff" size={40} className="text-slate-300 mx-auto mb-3"/>
+                                                    <p className="text-sm font-semibold text-slate-500">Belum ada foto dilaporkan</p>
                                                 </div>
-                                            )
-                                        })}
-                                        {childReports.filter(r => r.photo || r.PhotoURL).length === 0 && (
-                                            <div className="col-span-2 text-center mt-10 p-8 border-2 border-dashed border-slate-200 rounded-3xl">
-                                                <Icon name="ImageOff" size={40} className="text-slate-300 mx-auto mb-3"/>
-                                                <p className="text-sm font-semibold text-slate-500">Belum ada foto dilaporkan</p>
+                                            )}
+                                        </div>
+                                        
+                                        {/* Pagination Controls */}
+                                        {totalPages > 1 && (
+                                            <div className="flex justify-center items-center gap-4 mt-6 pb-6">
+                                                <button 
+                                                    onClick={() => setGalleryPage(prev => Math.max(prev - 1, 1))}
+                                                    disabled={galleryPage === 1}
+                                                    className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 disabled:opacity-50 disabled:bg-slate-50 shadow-sm"
+                                                >
+                                                    <Icon name="ChevronLeft" size={20}/>
+                                                </button>
+                                                <span className="text-sm font-bold text-slate-600">Hal {galleryPage} / {totalPages}</span>
+                                                <button 
+                                                    onClick={() => setGalleryPage(prev => Math.min(prev + 1, totalPages))}
+                                                    disabled={galleryPage === totalPages}
+                                                    className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 disabled:opacity-50 disabled:bg-slate-50 shadow-sm flex items-center gap-1"
+                                                >
+                                                    Next <Icon name="ChevronRight" size={20}/>
+                                                </button>
                                             </div>
                                         )}
                                     </div>
