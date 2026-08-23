@@ -82,6 +82,19 @@
             { id: `act7_${childId}`, childId, title: 'Tidur Malam', time: 'Malam', icon: 'Moon', reqPhoto: true, reqGps: false }
         ];
 
+        // Helper untuk mengubah URL gambar lawas agar tetap bisa dibuka
+        const getSafeImageUrl = (url) => {
+            if (!url) return '';
+            // Jika URL adalah URL Drive versi lama, convert ke Thumbnail API yang lebih aman
+            if (url.includes('drive.google.com') && (url.includes('uc') || url.includes('export='))) {
+                const idMatch = url.match(/id=([a-zA-Z0-9_-]+)/);
+                if (idMatch && idMatch[1]) {
+                    return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w1000`;
+                }
+            }
+            return url;
+        };
+
         const Icon = ({ name, size = 24, className = '', color = 'currentColor' }) => {
             const spanRef = useRef(null);
             useEffect(() => {
@@ -304,7 +317,6 @@
             const [selectedAct, setSelectedAct] = useState(null);
             const [currentTime, setCurrentTime] = useState(new Date());
 
-            // State untuk form biodata
             const [editBio, setEditBio] = useState({
                 name: user.name || user.Name || '',
                 phone: user.phone || user.Phone || '',
@@ -319,7 +331,6 @@
             const mySchedule = activities.filter(a => String(a.childId || a.ChildID) === String(userId));
             const dateString = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
 
-            // Update jam setiap detik
             useEffect(() => {
                 const timer = setInterval(() => setCurrentTime(new Date()), 1000);
                 return () => clearInterval(timer);
@@ -371,7 +382,6 @@
                                     <p className="text-sm font-bold text-slate-500 uppercase tracking-wide">{dateString}</p>
                                     <div className="flex items-center gap-2">
                                         <h1 className="text-2xl font-extrabold text-slate-800">Halo, {(user.name || user.Name || '').split(' ')[0]}!</h1>
-                                        {/* Ganti text tidak jelas dengan jam realtime */}
                                         <div className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 mt-1">
                                             <Icon name="Clock" size={12}/> {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                                         </div>
@@ -379,7 +389,7 @@
                                 </div>
                                 <div className="w-14 h-14 rounded-full overflow-hidden border-[3px] border-white shadow-md bg-slate-200">
                                     {user.photoProfile || user.PhotoProfile ? 
-                                        <img src={user.photoProfile || user.PhotoProfile} className="w-full h-full object-cover"/> : 
+                                        <img src={getSafeImageUrl(user.photoProfile || user.PhotoProfile)} className="w-full h-full object-cover"/> : 
                                         <div className="w-full h-full flex items-center justify-center bg-indigo-100 text-indigo-500"><Icon name="User" size={24}/></div>}
                                 </div>
                             </div>
@@ -404,29 +414,32 @@
 
                             <div>
                                 <h3 className="font-extrabold text-slate-800 mb-4 text-sm uppercase tracking-widest flex items-center gap-2">
-                                    <Icon name="ListTodo" size={16} className="text-indigo-500"/> Daftar Tugasmu
+                                    <Icon name="LayoutGrid" size={16} className="text-indigo-500"/> Daftar Tugasmu
                                 </h3>
-                                <div className="grid gap-3">
+                                {/* REVISI: Mengubah Tampilan Daftar ke Grid */}
+                                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                                     {mySchedule.map(act => {
                                         const isDone = reports.some(r => String(r.activityId || r.JadwalID) === String(act.id || act.ID));
                                         return (
                                             <div key={act.id || act.ID} onClick={() => !isDone && setSelectedAct(act)}
-                                                className={`p-4 rounded-2xl border-2 transition-all flex items-center gap-4 ${isDone ? 'bg-slate-50 border-slate-100 opacity-70' : 'bg-white border-white shadow-sm hover:shadow-md hover:border-indigo-100 cursor-pointer active:scale-[0.98]'}`}>
+                                                className={`p-4 rounded-[1.5rem] border-2 transition-all flex flex-col items-center text-center gap-3 relative ${isDone ? 'bg-slate-50 border-slate-100 opacity-70' : 'bg-white border-white shadow-sm hover:shadow-md hover:border-indigo-100 cursor-pointer active:scale-[0.98]'}`}>
                                                 
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${isDone ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}>
-                                                    <Icon name={isDone ? 'CheckCircle2' : (act.icon || act.Icon || 'Circle')} size={24} />
-                                                </div>
-                                                
-                                                <div className="flex-1">
-                                                    <h4 className={`font-bold text-base ${isDone ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{act.title || act.Title}</h4>
-                                                    <div className="flex items-center gap-2 mt-0.5 text-xs font-semibold text-slate-400">
-                                                        <span className="flex items-center gap-1"><Icon name="Clock" size={12}/> {act.time || act.Time}</span>
-                                                        {(act.reqPhoto || act.ReqPhoto) && !isDone && <span className="flex items-center gap-1 text-indigo-400 bg-indigo-50 px-1.5 py-0.5 rounded"><Icon name="Camera" size={10}/> Foto</span>}
+                                                {isDone && (
+                                                    <div className="absolute top-3 right-3 text-emerald-500 bg-emerald-100 rounded-full p-1 shadow-sm">
+                                                        <Icon name="Check" size={14}/>
                                                     </div>
+                                                )}
+                                                
+                                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-inner ${isDone ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                                                    <Icon name={isDone ? 'CheckCircle2' : (act.icon || act.Icon || 'Circle')} size={28} />
                                                 </div>
-
-                                                <div className="shrink-0">
-                                                    {isDone ? <div className="text-emerald-500"><Icon name="Check" size={20}/></div> : <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center"><Icon name="ChevronRight" size={16}/></div>}
+                                                
+                                                <div className="flex-1 w-full flex flex-col justify-between">
+                                                    <h4 className={`font-bold text-sm leading-tight mb-2 ${isDone ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{act.title || act.Title}</h4>
+                                                    <div className="flex items-center justify-center gap-1.5 mt-auto text-[10px] font-semibold text-slate-400 flex-wrap">
+                                                        <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md"><Icon name="Clock" size={10}/> {act.time || act.Time}</span>
+                                                        {(act.reqPhoto || act.ReqPhoto) && !isDone && <span className="flex items-center gap-1 text-indigo-500 bg-indigo-50 px-2 py-1 rounded-md"><Icon name="Camera" size={10}/> Foto</span>}
+                                                    </div>
                                                 </div>
                                             </div>
                                         )
@@ -451,7 +464,7 @@
                                     <div className="flex flex-col items-center">
                                         <div className="relative group cursor-pointer">
                                             <div className="w-24 h-24 rounded-full border-4 border-indigo-50 bg-slate-100 overflow-hidden shadow-sm">
-                                                {editBio.photoProfile ? <img src={editBio.photoProfile} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-400"><Icon name="User" size={40}/></div>}
+                                                {editBio.photoProfile ? <img src={getSafeImageUrl(editBio.photoProfile)} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-400"><Icon name="User" size={40}/></div>}
                                             </div>
                                             <label className="absolute bottom-0 right-0 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:bg-indigo-700 transition-colors">
                                                 <Icon name="Camera" size={14} />
@@ -492,7 +505,7 @@
                                             <Icon name="Edit3" size={18} />
                                         </button>
                                         <div className="w-24 h-24 mx-auto rounded-full border-4 border-indigo-50 bg-slate-100 overflow-hidden mb-4 shadow-sm">
-                                            {user.photoProfile || user.PhotoProfile ? <img src={user.photoProfile || user.PhotoProfile} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-400"><Icon name="User" size={40}/></div>}
+                                            {user.photoProfile || user.PhotoProfile ? <img src={getSafeImageUrl(user.photoProfile || user.PhotoProfile)} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-400"><Icon name="User" size={40}/></div>}
                                         </div>
                                         <h2 className="text-xl font-extrabold text-slate-800">{user.name || user.Name}</h2>
                                         <p className="text-sm text-slate-500 mt-1">{user.bio || user.Bio || 'Belum ada bio'}</p>
@@ -580,19 +593,16 @@
 
             const childActivities = activities.filter(a => String(a.childId || a.ChildID) === String(selectedChildId));
             
-            // Filter laporan yang memiliki foto (Hanya untuk galeri)
             const childReportsWithPhoto = reports.filter(r => 
                 childActivities.some(a => String(a.id || a.ID) === String(r.activityId || r.JadwalID)) && 
                 (r.photo || r.PhotoURL)
-            ).sort((a, b) => new Date(b.timestamp || b.Timestamp) - new Date(a.timestamp || a.Timestamp)); // Urutkan terbaru
+            ).sort((a, b) => new Date(b.timestamp || b.Timestamp) - new Date(a.timestamp || a.Timestamp)); 
 
-            // Data untuk halaman saat ini
             const totalPages = Math.ceil(childReportsWithPhoto.length / itemsPerPage);
             const currentGalleryItems = childReportsWithPhoto.slice((galleryPage - 1) * itemsPerPage, galleryPage * itemsPerPage);
 
             return (
                 <div className="flex-1 flex flex-col h-full bg-slate-50 relative">
-                    {/* Header Admin */}
                     <div className="bg-white px-6 py-5 flex justify-between items-center shadow-sm z-10 sticky top-0 border-b border-slate-100">
                         <div>
                             <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-0.5">Admin Portal</p>
@@ -606,7 +616,6 @@
                         
                         {currentTab === 'dashboard' && (
                             <div className="p-5">
-                                {/* Child Selector */}
                                 <div className="mb-6 flex gap-3 overflow-x-auto hide-scrollbar pb-2">
                                     {childrenList.map(child => {
                                         const cId = child.id || child.ID;
@@ -616,7 +625,7 @@
                                             className={`flex-shrink-0 px-4 py-2.5 rounded-full border font-bold text-sm transition-all flex items-center gap-2 whitespace-nowrap
                                             ${isSelected ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
                                             <div className={`w-6 h-6 rounded-full flex items-center justify-center overflow-hidden bg-white/20`}>
-                                                {(child.photoProfile || child.PhotoProfile) ? <img src={child.photoProfile || child.PhotoProfile} className="w-full h-full object-cover"/> : <Icon name="User" size={12} className={isSelected ? 'text-white' : 'text-slate-400'}/>}
+                                                {(child.photoProfile || child.PhotoProfile) ? <img src={getSafeImageUrl(child.photoProfile || child.PhotoProfile)} className="w-full h-full object-cover"/> : <Icon name="User" size={12} className={isSelected ? 'text-white' : 'text-slate-400'}/>}
                                             </div>
                                             {(child.name || child.Name).split(' ')[0]}
                                         </button>
@@ -660,7 +669,7 @@
                                                         {report && (
                                                             <div className="bg-slate-50/50 p-3 rounded-xl border border-slate-100 flex gap-2">
                                                                 {(report.photo || report.PhotoURL) && (
-                                                                    <button onClick={() => setSelectedPhoto(report.photo || report.PhotoURL)} className="flex-1 bg-white border border-slate-200 py-2 rounded-lg text-xs font-bold text-slate-600 flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 transition-colors">
+                                                                    <button onClick={() => setSelectedPhoto(getSafeImageUrl(report.photo || report.PhotoURL))} className="flex-1 bg-white border border-slate-200 py-2 rounded-lg text-xs font-bold text-slate-600 flex items-center justify-center gap-2 hover:border-indigo-300 hover:text-indigo-600 transition-colors">
                                                                         <Icon name="Image" size={14} className="text-indigo-400"/> Lihat Foto
                                                                     </button>
                                                                 )}
@@ -682,16 +691,15 @@
 
                         {currentTab === 'galeri' && (
                             <div className="p-5 h-full">
-                                <h2 className="font-extrabold text-slate-800 text-sm uppercase tracking-widest mb-5 flex items-center gap-2"><Icon name="Image" size={16} className="text-indigo-500"/> Galeri Foto (1-10)</h2>
+                                <h2 className="font-extrabold text-slate-800 text-sm uppercase tracking-widest mb-5 flex items-center gap-2"><Icon name="Image" size={16} className="text-indigo-500"/> Galeri Foto ({currentGalleryItems.length === 0 ? '0' : (galleryPage-1)*itemsPerPage + 1}-{Math.min(galleryPage*itemsPerPage, childReportsWithPhoto.length)})</h2>
                                 {selectedChildId ? (
                                     <div className="space-y-6">
                                         <div className="grid grid-cols-2 gap-4">
                                             {currentGalleryItems.map(report => {
-                                                const photoSrc = report.photo || report.PhotoURL;
+                                                const photoSrc = getSafeImageUrl(report.photo || report.PhotoURL);
                                                 const reportDate = new Date(report.timestamp || report.Timestamp);
                                                 return (
                                                     <div key={report.id || report.ID} onClick={() => setSelectedPhoto(photoSrc)} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 cursor-pointer shadow-sm hover:shadow-md transition-shadow group">
-                                                        {/* Error handling untuk gambar yang rusak */}
                                                         <img src={photoSrc} 
                                                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                                                              onError={(e) => {
@@ -701,7 +709,6 @@
                                                              }}
                                                         />
                                                         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-transparent to-transparent flex flex-col justify-end p-3">
-                                                            {/* Menambahkan Tanggal dan Jam */}
                                                             <p className="text-white text-[10px] font-medium opacity-90 truncate">{reportDate.toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'})}</p>
                                                             <p className="text-white text-xs font-bold truncate flex items-center gap-1"><Icon name="Clock" size={10}/> {reportDate.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}</p>
                                                         </div>
@@ -716,7 +723,6 @@
                                             )}
                                         </div>
                                         
-                                        {/* Pagination Controls */}
                                         {totalPages > 1 && (
                                             <div className="flex justify-center items-center gap-4 mt-6 pb-6">
                                                 <button 
@@ -752,7 +758,7 @@
                                         {childrenList.map(child => (
                                             <div key={child.id || child.ID} className="py-4 flex items-center gap-4 first:pt-0 last:pb-0">
                                                 <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center border border-indigo-100 overflow-hidden">
-                                                    {(child.photoProfile || child.PhotoProfile) ? <img src={child.photoProfile || child.PhotoProfile} className="w-full h-full object-cover"/> : <Icon name="User" size={20} className="text-indigo-400"/>}
+                                                    {(child.photoProfile || child.PhotoProfile) ? <img src={getSafeImageUrl(child.photoProfile || child.PhotoProfile)} className="w-full h-full object-cover"/> : <Icon name="User" size={20} className="text-indigo-400"/>}
                                                 </div>
                                                 <div className="flex-1">
                                                     <p className="font-extrabold text-slate-800 text-sm">{child.name || child.Name}</p>
@@ -811,7 +817,7 @@
             const showToast = (message, type = 'info') => setToast({ message, type });
 
             // ⚠️ GANTI DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA! ⚠️
-            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzc07XIeyrFDNOxrhhk-UUMNrRFAwVztHzOxt258uVncx6XzgzOHAIv5zDBHhxEPqixTg/exec';
+            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwsb8Rfygicaf_twuosauxw_DmZV02naEkhTgJfrog0yEV_EBp_qt_btllf_9Hm-EklYg/exec';
 
             const [currentUser, setCurrentUser] = useState(() => {
                 const saved = localStorage.getItem('anakcare_user_v2');
