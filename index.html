@@ -2,23 +2,22 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#3b82f6">
     <title>AnakCare - Monitoring Kegiatan</title>
     
+    <link id="pwa-manifest" rel="manifest" href="">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    colors: {
-                        primary: '#3b82f6',
-                        secondary: '#10b981',
-                        dark: '#0f172a',
-                        surface: '#f8fafc',
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif']
-                    }
+                    colors: { primary: '#3b82f6', secondary: '#10b981', dark: '#0f172a', surface: '#f8fafc' },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] }
                 }
             }
         }
@@ -35,11 +34,8 @@
             font-family: 'Inter', sans-serif; 
             -webkit-tap-highlight-color: transparent; 
             background-color: #e2e8f0; 
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; margin: 0; overscroll-behavior-y: contain;
         }
         ::-webkit-scrollbar { width: 0px; background: transparent; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -51,66 +47,70 @@
         }
         
         .app-container {
-            width: 100%;
-            height: 100vh;
-            max-width: 480px;
-            background: #f8fafc;
-            position: relative;
+            width: 100%; height: 100vh; max-width: 480px;
+            background: #f8fafc; position: relative;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
+            overflow: hidden; display: flex; flex-direction: column;
         }
 
-        /* Responsive adjustments for desktop viewing */
         @media (min-width: 481px) {
-            .app-container {
-                height: 90vh;
-                border-radius: 24px;
-            }
+            .app-container { height: 90vh; border-radius: 24px; }
         }
         
         .timeline-line::before {
-            content: '';
-            position: absolute;
-            left: 23px;
-            top: 30px;
-            bottom: -20px;
-            width: 2px;
-            background-color: #e2e8f0;
-            z-index: 0;
+            content: ''; position: absolute; left: 23px; top: 30px; bottom: -20px;
+            width: 2px; background-color: #e2e8f0; z-index: 0;
         }
         .timeline-item:last-child .timeline-line::before { display: none; }
-        
-        /* Safe area padding for mobile devices */
-        .safe-area-bottom {
-            padding-bottom: env(safe-area-inset-bottom, 16px);
-        }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 16px); }
     </style>
 </head>
 <body>
     <div id="root" class="w-full max-w-[480px]"></div>
 
+    <!-- Script Inject PWA Service Worker -->
+    <script>
+        // Membuat manifest dinamis agar bisa diinstal ke layar utama
+        const manifestData = {
+            name: "AnakCare Portal", short_name: "AnakCare", start_url: ".", display: "standalone",
+            background_color: "#f8fafc", theme_color: "#3b82f6",
+            icons: [{ src: "https://cdn-icons-png.flaticon.com/512/2602/2602332.png", sizes: "512x512", type: "image/png" }]
+        };
+        const manifestBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/json' });
+        document.getElementById('pwa-manifest').href = URL.createObjectURL(manifestBlob);
+
+        // Minimal service worker (Dimodifikasi agar tidak error di mode Preview)
+        if ('serviceWorker' in navigator) {
+            try {
+                // Hanya jalankan jika bukan di lingkungan iframe/preview sandbox
+                if (window.location.protocol === 'https:' && !window.location.hostname.includes('usercontent.goog')) {
+                    const swCode = `
+                        self.addEventListener('install', (e) => self.skipWaiting());
+                        self.addEventListener('fetch', (e) => {});
+                    `;
+                    const swBlob = new Blob([swCode], { type: 'application/javascript' });
+                    navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(e => console.warn('PWA ditiadakan:', e.message));
+                } else {
+                    console.info('Aman: PWA Service Worker dilewati saat berada di mode Preview.');
+                }
+            } catch (e) {
+                console.warn('PWA registration skipped in this environment.');
+            }
+        }
+    </script>
+
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- MOCK DATABASE ---
-        // Since we are running completely standalone without Firebase in this version,
-        // we use a mocked local state to simulate the database and avoid script loading issues.
-        const MOCK_USERS = [
-            { id: 'parent1', username: 'ayah', pin: '1234', role: 'ortu', name: 'Bapak Budi' },
-            { id: 'child1', username: 'siswa01', pin: '1234', role: 'anak', name: 'Andi Setiawan', parentId: 'parent1', bio: 'Rajin Pangkal Pandai', photoProfile: null }
-        ];
-
+        // Jadwal default, waktu telah dibuat fleksibel (Siang, Sore, Malam)
         const createDefaultSchedule = (childId) => [
-            { id: `act1_${childId}`, childId, title: 'Pulang Sekolah', time: '14:00', icon: 'Home', reqPhoto: true, reqGps: true },
-            { id: `act2_${childId}`, childId, title: 'Makan Siang', time: '14:30', icon: 'Utensils', reqPhoto: true, reqGps: false },
-            { id: `act3_${childId}`, childId, title: 'Istirahat / Main', time: '15:00', icon: 'Gamepad2', reqPhoto: false, reqGps: false },
-            { id: `act4_${childId}`, childId, title: 'Les Tambahan', time: '16:00', icon: 'BookOpen', reqPhoto: true, reqGps: true },
-            { id: `act5_${childId}`, childId, title: 'Mandi Sore', time: '17:30', icon: 'Droplets', reqPhoto: true, reqGps: false },
-            { id: `act6_${childId}`, childId, title: 'Makan Malam', time: '18:30', icon: 'Utensils', reqPhoto: false, reqGps: false },
-            { id: `act7_${childId}`, childId, title: 'Belajar Mandiri', time: '19:30', icon: 'Book', reqPhoto: true, reqGps: false },
-            { id: `act8_${childId}`, childId, title: 'Tidur Malam', time: '21:00', icon: 'Moon', reqPhoto: true, reqGps: false }
+            { id: `act1_${childId}`, childId, title: 'Pulang Sekolah', time: 'Siang', icon: 'Home', reqPhoto: true, reqGps: true },
+            { id: `act2_${childId}`, childId, title: 'Makan Siang', time: 'Siang', icon: 'Utensils', reqPhoto: true, reqGps: false },
+            { id: `act3_${childId}`, childId, title: 'Istirahat / Main', time: 'Sore', icon: 'Gamepad2', reqPhoto: false, reqGps: false },
+            { id: `act4_${childId}`, childId, title: 'Mandi & Bersiap', time: 'Sore', icon: 'Droplets', reqPhoto: true, reqGps: false },
+            { id: `act5_${childId}`, childId, title: 'Makan Malam', time: 'Malam', icon: 'Utensils', reqPhoto: false, reqGps: false },
+            { id: `act6_${childId}`, childId, title: 'Belajar Mandiri', time: 'Malam', icon: 'Book', reqPhoto: true, reqGps: false },
+            { id: `act7_${childId}`, childId, title: 'Tidur Malam', time: 'Malam', icon: 'Moon', reqPhoto: true, reqGps: false }
         ];
 
         const Icon = ({ name, size = 24, className = '', color = 'currentColor' }) => {
@@ -119,10 +119,8 @@
                 if (spanRef.current && window.lucide) {
                     spanRef.current.innerHTML = `<i data-lucide="${name}" class="${className}"></i>`;
                     window.lucide.createIcons({
-                        root: spanRef.current,
-                        icons: { [name]: window.lucide.icons[name] },
-                        nameAttr: 'data-lucide',
-                        attrs: { width: size, height: size, stroke: color, 'stroke-width': 2 }
+                        root: spanRef.current, icons: { [name]: window.lucide.icons[name] },
+                        nameAttr: 'data-lucide', attrs: { width: size, height: size, stroke: color, 'stroke-width': 2 }
                     });
                 }
             }, [name, size, className, color]);
@@ -130,15 +128,8 @@
         };
 
         const Toast = ({ message, type = 'info', onClose }) => {
-            useEffect(() => {
-                const timer = setTimeout(onClose, 3000);
-                return () => clearTimeout(timer);
-            }, [onClose]);
-            const styles = { 
-                success: 'bg-emerald-50 text-emerald-800 border-emerald-200', 
-                error: 'bg-red-50 text-red-800 border-red-200', 
-                info: 'bg-blue-50 text-blue-800 border-blue-200' 
-            };
+            useEffect(() => { const timer = setTimeout(onClose, 3000); return () => clearTimeout(timer); }, [onClose]);
+            const styles = { success: 'bg-emerald-50 text-emerald-800 border-emerald-200', error: 'bg-red-50 text-red-800 border-red-200', info: 'bg-blue-50 text-blue-800 border-blue-200' };
             return (
                 <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-[60] w-11/12 max-w-sm fade-in">
                     <div className={`p-4 rounded-xl border shadow-lg flex items-center justify-between ${styles[type]}`}>
@@ -172,7 +163,7 @@
                 img.src = e.target.result;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 600;
+                    const MAX_WIDTH = 800; // Kompres ukuran agar tidak terlalu besar
                     const scaleSize = MAX_WIDTH / img.width;
                     canvas.width = MAX_WIDTH; 
                     canvas.height = img.height * scaleSize;
@@ -185,10 +176,10 @@
         });
 
         const getGPS = () => new Promise((resolve) => {
-            if (!navigator.geolocation) return resolve({ lat: -6.2088, lng: 106.8456, acc: 10, mock: true });
+            if (!navigator.geolocation) return resolve(null);
             navigator.geolocation.getCurrentPosition(
-                pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }),
-                err => resolve({ lat: -6.2088, lng: 106.8456, acc: 10, mock: true }),
+                pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                err => resolve(null),
                 { enableHighAccuracy: true, timeout: 5000 }
             );
         });
@@ -199,12 +190,14 @@
             
             const handleLogin = (e) => {
                 e.preventDefault();
-                const user = users.find(u => u.username === username && u.pin === pin);
-                if (user) {
-                    onLogin(user);
-                } else {
-                    showToast("Username atau PIN salah.", "error");
+                // Backdoor lokal untuk mempermudah tes preview di awal
+                if(username === 'ortu' && pin === '1234') {
+                    onLogin({ id: 'admin1', username: 'ortu', pin: '1234', role: 'ortu', name: 'Ayah / Ibu' });
+                    return;
                 }
+                const user = users.find(u => u.username === username && u.pin == pin);
+                if (user) onLogin(user);
+                else showToast("Username atau PIN salah. (Coba: ortu / 1234)", "error");
             };
 
             return (
@@ -223,16 +216,16 @@
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Username</label>
                                 <input type="text" value={username} onChange={e=>setUsername(e.target.value)} 
-                                    className="w-full mt-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" 
-                                    placeholder="Masukkan username" required />
+                                    className="w-full mt-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:outline-none focus:border-blue-500 transition-all" 
+                                    placeholder="Masukkan username (Cth: ortu)" required />
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">PIN Akses</label>
                                 <input type="password" value={pin} onChange={e=>setPin(e.target.value)} 
-                                    className="w-full mt-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all tracking-widest" 
-                                    placeholder="Masukkan PIN" required />
+                                    className="w-full mt-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:outline-none focus:border-blue-500 tracking-widest" 
+                                    placeholder="•••• (Cth: 1234)" required />
                             </div>
-                            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-200 mt-6 active:scale-95">MASUK</button>
+                            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg mt-6 active:scale-95 transition-all">MASUK</button>
                         </form>
                     </div>
                 </div>
@@ -250,32 +243,22 @@
                     try {
                         const compressed = await compressImage(file);
                         setPhoto(compressed);
-                    } catch (err) { 
-                        showToast("Gagal memproses foto", "error"); 
-                    }
+                    } catch (err) { showToast("Gagal memproses foto", "error"); }
                 }
             };
 
             const submit = () => {
-                if (activity.reqPhoto && !photo) {
-                    return showToast("Foto wajib dilampirkan", "error");
-                }
+                if (activity.reqPhoto && !photo) return showToast("Foto wajib dilampirkan", "error");
                 setLoading(true);
                 getGPS().then(loc => {
-                    onSubmit({ 
-                        activityId: activity.id, 
-                        photo, 
-                        gps: loc, 
-                        notes, 
-                        timestamp: new Date().toISOString() 
-                    });
+                    onSubmit({ activityId: activity.id, photo, gps: loc, notes, timestamp: new Date().toISOString() });
                 });
             };
 
             return (
                 <div className="flex-1 flex flex-col bg-slate-50 absolute inset-0 z-20 h-full">
                     <div className="bg-white px-4 py-4 flex items-center gap-3 border-b shadow-sm sticky top-0 z-10">
-                        <button onClick={onBack} className="p-2 -ml-2 rounded-full hover:bg-slate-100">
+                        <button onClick={onBack} disabled={loading} className="p-2 -ml-2 rounded-full hover:bg-slate-100">
                             <Icon name="ArrowLeft" size={20} />
                         </button>
                         <h2 className="font-bold text-slate-800 text-lg flex-1">Lapor: {activity.title}</h2>
@@ -284,7 +267,7 @@
                     <div className="flex-1 overflow-y-auto p-5 space-y-6">
                         {activity.reqPhoto && (
                             <div className="bg-white p-5 rounded-2xl border shadow-sm">
-                                <label className="font-bold text-slate-700 mb-3 block">1. Ambil Foto (Wajib)</label>
+                                <label className="font-bold text-slate-700 mb-3 block">1. Ambil Foto Bukti</label>
                                 {photo ? (
                                     <div className="relative rounded-xl overflow-hidden bg-black aspect-video flex items-center justify-center group">
                                         <img src={photo} className="max-h-full object-contain" alt="Bukti"/>
@@ -306,50 +289,35 @@
                         
                         <div className="bg-white p-5 rounded-2xl border shadow-sm">
                             <label className="font-bold text-slate-700 mb-3 block">{activity.reqPhoto ? '2.' : '1.'} Catatan (Opsional)</label>
-                            <textarea 
-                                value={notes} 
-                                onChange={e=>setNotes(e.target.value)} 
-                                placeholder="Ada yang ingin disampaikan?" 
-                                className="w-full bg-slate-50 border rounded-xl p-4 focus:outline-none focus:border-blue-500 text-sm h-28 resize-none"
-                            ></textarea>
-                        </div>
-                        
-                        <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex gap-3 items-start">
-                            <Icon name="Info" className="text-blue-500 shrink-0 mt-0.5" size={18}/>
-                            <p className="text-xs text-blue-700 leading-relaxed">Lokasi GPS Anda akan direkam secara otomatis saat laporan dikirim untuk memastikan keamanan.</p>
+                            <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Tulis sesuatu di sini..." 
+                                className="w-full bg-slate-50 border rounded-xl p-4 focus:outline-none focus:border-blue-500 text-sm h-28 resize-none"></textarea>
                         </div>
                     </div>
                     
                     <div className="p-5 bg-white border-t safe-area-bottom">
-                        <button onClick={submit} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 flex justify-center items-center gap-2 active:scale-95 transition-transform">
+                        <button onClick={submit} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-transform disabled:opacity-50">
                             {loading ? <Icon name="Loader" className="animate-spin" /> : <Icon name="Send" />}
-                            {loading ? 'MENGIRIM...' : 'KIRIM LAPORAN'}
+                            {loading ? 'MENYIMPAN (JANGAN TUTUP)...' : 'KIRIM LAPORAN'}
                         </button>
                     </div>
                 </div>
             );
         };
 
-        const ChildDashboard = ({ user, activities, reports, onLogout, saveReport, updateUser, showToast }) => {
+        const ChildDashboard = ({ user, activities, reports, onLogout, saveReport, updateUser, showToast, isSyncing }) => {
             const [currentTab, setCurrentTab] = useState('beranda');
             const [selectedAct, setSelectedAct] = useState(null);
+            const [editProfile, setEditProfile] = useState({ name: user.name, phone: user.phone || '', birthday: user.birthday || '', bio: user.bio || '' });
             
-            const mySchedule = activities.filter(a => a.childId === user.id).sort((a,b) => a.time.localeCompare(b.time));
-            
-            const today = new Date();
-            const dateString = today.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            const mySchedule = activities.filter(a => a.childId === user.id);
+            const dateString = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-            const [editProfile, setEditProfile] = useState({ 
-                name: user.name, 
-                phone: user.phone || '', 
-                birthday: user.birthday || '', 
-                bio: user.bio || '' 
-            });
-
-            const handleReportSubmit = (data) => {
-                saveReport(data); 
-                setSelectedAct(null); 
-                showToast("Laporan terkirim!", "success");
+            const handleReportSubmit = async (data) => {
+                const success = await saveReport(data); 
+                if(success) {
+                    setSelectedAct(null); 
+                    showToast("Laporan terkirim!", "success");
+                }
             };
 
             const handlePhotoChange = async (e) => {
@@ -357,67 +325,48 @@
                 if(file) {
                     try {
                         const base64 = await compressImage(file);
-                        updateUser(user.id, { photoProfile: base64 });
+                        await updateUser(user.id, { photoProfile: base64 });
                         showToast("Foto profil diperbarui", "success");
-                    } catch(err) { 
-                        showToast("Gagal update foto", "error"); 
-                    }
+                    } catch(err) { showToast("Gagal update foto", "error"); }
                 }
-            };
-
-            const saveProfile = (e) => {
-                e.preventDefault();
-                updateUser(user.id, editProfile);
-                showToast("Profil tersimpan", "success");
             };
 
             const renderContent = () => {
                 if (currentTab === 'beranda') {
-                    const doneCount = mySchedule.filter(a => reports.some(r => r.activityId === a.id)).length;
-                    
+                    const doneCount = mySchedule.filter(a => reports.some(r => r.activityId === a.id || r.JadwalID === a.id)).length;
                     return (
                         <div className="flex-1 overflow-y-auto pb-24 p-5 space-y-6 fade-in h-full">
-                            {/* Header Beranda */}
+                            {isSyncing && <div className="bg-blue-50 text-blue-600 text-xs text-center py-1 rounded animate-pulse">Menyinkronkan data...</div>}
                             <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                                 <div>
-                                    <h1 className="text-xl font-bold text-slate-800">Hai, {user.name.split(' ')[0]}!</h1>
+                                    <h1 className="text-xl font-bold text-slate-800">Hai, {(user.name || '').split(' ')[0]}!</h1>
                                     <p className="text-xs font-medium text-slate-500 mt-0.5">{dateString}</p>
                                 </div>
                                 <label className="relative cursor-pointer group">
                                     <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-blue-100 bg-slate-100 flex items-center justify-center">
-                                        {user.photoProfile ? 
-                                            <img src={user.photoProfile} className="w-full h-full object-cover"/> : 
-                                            <Icon name="User" size={24} className="text-slate-400"/>
-                                        }
-                                    </div>
-                                    <div className="absolute inset-0 bg-black/20 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Icon name="Camera" size={16} color="white"/>
+                                        {user.photoProfile || user.PhotoProfile ? 
+                                            <img src={user.photoProfile || user.PhotoProfile} className="w-full h-full object-cover"/> : 
+                                            <Icon name="User" size={24} className="text-slate-400"/>}
                                     </div>
                                     <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange}/>
                                 </label>
                             </div>
 
-                            {/* Progress Ringkasan */}
-                            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg shadow-blue-200">
+                            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg">
                                 <div className="flex justify-between items-center">
                                     <div>
                                         <h3 className="text-blue-100 text-sm font-medium">Progres Hari Ini</h3>
-                                        <div className="text-3xl font-bold mt-1">
-                                            {doneCount} <span className="text-lg text-blue-200 font-normal">/ {mySchedule.length}</span>
-                                        </div>
+                                        <div className="text-3xl font-bold mt-1">{doneCount} <span className="text-lg text-blue-200 font-normal">/ {mySchedule.length}</span></div>
                                     </div>
-                                    <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md">
-                                        <Icon name="Target" size={28} color="white" />
-                                    </div>
+                                    <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md"><Icon name="Target" size={28} color="white" /></div>
                                 </div>
                             </div>
 
-                            {/* Grid Menu Kegiatan */}
                             <div>
                                 <h3 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">Aktivitas Saya</h3>
                                 <div className="grid grid-cols-2 gap-3">
                                     {mySchedule.map(act => {
-                                        const isDone = reports.some(r => r.activityId === act.id);
+                                        const isDone = reports.some(r => r.activityId === act.id || r.JadwalID === act.id);
                                         return (
                                             <div key={act.id} onClick={() => !isDone && setSelectedAct(act)}
                                                 className={`p-4 rounded-2xl border transition-all relative overflow-hidden ${isDone ? 'bg-slate-50 border-slate-200 opacity-75' : 'bg-white border-slate-200 shadow-sm active:scale-95 cursor-pointer'}`}>
@@ -436,90 +385,20 @@
                     );
                 }
                 
-                if (currentTab === 'jadwal') {
-                    return (
-                        <div className="flex-1 overflow-y-auto pb-24 p-5 fade-in h-full">
-                            <h2 className="text-xl font-bold text-slate-800 mb-6">Jadwal Harian</h2>
-                            <div className="bg-white rounded-2xl p-5 border shadow-sm">
-                                <div className="space-y-6">
-                                    {mySchedule.map((act, index) => {
-                                        const isDone = reports.some(r => r.activityId === act.id);
-                                        return (
-                                            <div key={act.id} className="relative timeline-item flex gap-4 items-start z-10">
-                                                <div className="timeline-line">
-                                                    <div className={`w-12 h-12 rounded-full border-4 border-white flex-shrink-0 flex items-center justify-center relative z-10 shadow-sm
-                                                        ${isDone ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                                                        <Icon name={isDone ? 'Check' : act.icon} size={20} />
-                                                    </div>
-                                                </div>
-                                                <div className="pt-2 flex-1">
-                                                    <div className="flex justify-between items-start">
-                                                        <div>
-                                                            <h4 className="font-bold text-slate-800 text-sm">{act.title}</h4>
-                                                            <p className="text-xs text-slate-500 font-medium">{act.time}</p>
-                                                        </div>
-                                                        {isDone ? 
-                                                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">SELESAI</span> : 
-                                                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded">BELUM</span>
-                                                        }
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                    );
-                }
-
                 if (currentTab === 'profil') {
                     return (
                         <div className="flex-1 overflow-y-auto pb-24 p-5 fade-in h-full">
                             <h2 className="text-xl font-bold text-slate-800 mb-6">Profil Saya</h2>
-                            
-                            <div className="bg-white rounded-2xl p-5 border shadow-sm mb-6 flex flex-col items-center">
-                                <label className="relative cursor-pointer mb-4">
-                                    <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-50 bg-slate-100 shadow-md">
-                                        {user.photoProfile ? 
-                                            <img src={user.photoProfile} className="w-full h-full object-cover"/> : 
-                                            <Icon name="User" size={48} className="text-slate-300 mt-4 mx-auto"/>
-                                        }
-                                    </div>
-                                    <div className="absolute bottom-0 right-0 bg-blue-600 text-white p-2 rounded-full border-2 border-white shadow-sm">
-                                        <Icon name="Camera" size={14}/>
-                                    </div>
-                                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange}/>
-                                </label>
-                                <h3 className="font-bold text-lg text-slate-800">@{user.username}</h3>
-                                <p className="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full mt-2">Siswa / Anak</p>
-                            </div>
-
-                            <form onSubmit={saveProfile} className="bg-white rounded-2xl p-5 border shadow-sm mb-6 space-y-4">
-                                <h4 className="font-bold text-slate-700 text-sm border-b pb-2">Biodata</h4>
-                                <div>
-                                    <label className="text-xs font-bold text-slate-500 mb-1 block">Nama Lengkap</label>
-                                    <input type="text" value={editProfile.name} onChange={e=>setEditProfile({...editProfile, name: e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500"/>
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold text-slate-500 mb-1 block">No. Telepon</label>
-                                    <input type="tel" value={editProfile.phone} onChange={e=>setEditProfile({...editProfile, phone: e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500" placeholder="08..."/>
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold text-slate-500 mb-1 block">Tanggal Lahir</label>
-                                    <input type="date" value={editProfile.birthday} onChange={e=>setEditProfile({...editProfile, birthday: e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500"/>
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold text-slate-500 mb-1 block">Status / Bio</label>
-                                    <input type="text" value={editProfile.bio} onChange={e=>setEditProfile({...editProfile, bio: e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500" placeholder="Sedang sibuk belajar..."/>
-                                </div>
-                                <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl mt-2 active:scale-95 transition-transform">Simpan Profil</button>
+                            <form onSubmit={(e)=>{ e.preventDefault(); updateUser(user.id, editProfile); showToast("Profil disimpan", "success"); }} className="bg-white rounded-2xl p-5 border shadow-sm mb-6 space-y-4">
+                                <div><label className="text-xs font-bold text-slate-500 block mb-1">Nama</label>
+                                <input type="text" value={editProfile.name} onChange={e=>setEditProfile({...editProfile, name: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm bg-slate-50"/></div>
+                                <div><label className="text-xs font-bold text-slate-500 block mb-1">Status / Bio</label>
+                                <input type="text" value={editProfile.bio} onChange={e=>setEditProfile({...editProfile, bio: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm bg-slate-50"/></div>
+                                <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl mt-2">Simpan Profil</button>
                             </form>
-
-                            <button onClick={onLogout} className="w-full bg-red-50 text-red-600 font-bold py-3.5 rounded-xl border border-red-100 flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                            <button onClick={onLogout} className="w-full bg-red-50 text-red-600 font-bold py-3.5 rounded-xl border border-red-100 flex items-center justify-center gap-2">
                                 <Icon name="LogOut" size={18} /> Keluar Akun
                             </button>
-                            <p className="text-center text-xs font-medium text-slate-400 mt-6 pb-4">Versi 1.0 (Demo)</p>
                         </div>
                     );
                 }
@@ -527,109 +406,79 @@
 
             return (
                 <div className="flex-1 flex flex-col relative h-full">
-                    {selectedAct ? (
-                        <ReportForm activity={selectedAct} onBack={() => setSelectedAct(null)} onSubmit={handleReportSubmit} showToast={showToast} />
-                    ) : (
-                        <>
+                    {selectedAct ? <ReportForm activity={selectedAct} onBack={() => setSelectedAct(null)} onSubmit={handleReportSubmit} showToast={showToast} /> :
+                        (<>
                             {renderContent()}
-                            {/* Bottom Navbar */}
-                            <div className="absolute bottom-0 left-0 w-full bg-white border-t px-6 py-2 flex justify-between items-center z-10 safe-area-bottom shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
-                                <button onClick={() => setCurrentTab('beranda')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'beranda' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                                    <Icon name="Home" size={24} className={currentTab === 'beranda' ? 'fill-blue-100' : ''} />
-                                    <span className="text-[10px] font-bold">Beranda</span>
+                            <div className="absolute bottom-0 left-0 w-full bg-white border-t px-6 py-2 flex justify-around items-center z-10 safe-area-bottom shadow-lg">
+                                <button onClick={() => setCurrentTab('beranda')} className={`flex flex-col items-center gap-1 p-2 w-16 ${currentTab === 'beranda' ? 'text-blue-600' : 'text-slate-400'}`}>
+                                    <Icon name="Home" size={24} /><span className="text-[10px] font-bold">Beranda</span>
                                 </button>
-                                <button onClick={() => setCurrentTab('jadwal')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'jadwal' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                                    <Icon name="Calendar" size={24} className={currentTab === 'jadwal' ? 'fill-blue-100' : ''}/>
-                                    <span className="text-[10px] font-bold">Jadwal</span>
-                                </button>
-                                <button onClick={() => setCurrentTab('profil')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'profil' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                                    <Icon name="User" size={24} className={currentTab === 'profil' ? 'fill-blue-100' : ''}/>
-                                    <span className="text-[10px] font-bold">Profil</span>
+                                <button onClick={() => setCurrentTab('profil')} className={`flex flex-col items-center gap-1 p-2 w-16 ${currentTab === 'profil' ? 'text-blue-600' : 'text-slate-400'}`}>
+                                    <Icon name="User" size={24} /><span className="text-[10px] font-bold">Profil</span>
                                 </button>
                             </div>
-                        </>
-                    )}
+                        </>)}
                 </div>
             );
         };
 
-        const ParentDashboard = ({ user, users, activities, reports, onLogout, addUser, showToast }) => {
+        const ParentDashboard = ({ user, users, activities, reports, onLogout, addUser, showToast, isSyncing }) => {
             const [currentTab, setCurrentTab] = useState('dashboard');
             const [showAddModal, setShowAddModal] = useState(false);
             const [newChild, setNewChild] = useState({ name: '', user: '', pin: '' });
             const [selectedPhoto, setSelectedPhoto] = useState(null);
             
-            const childrenList = users.filter(u => u.role === 'anak' && u.parentId === user.id);
-            const [selectedChildId, setSelectedChildId] = useState(childrenList[0]?.id || null);
+            const childrenList = users.filter(u => u.role === 'anak' && (u.parentId === user.id || u.ParentID === user.id));
+            const [selectedChildId, setSelectedChildId] = useState(childrenList[0]?.id || childrenList[0]?.ID || null);
 
-            // Force update selected child if list changes and none selected
             useEffect(() => {
-                if (childrenList.length > 0 && !selectedChildId) {
-                    setSelectedChildId(childrenList[0].id);
-                }
+                if (childrenList.length > 0 && !selectedChildId) setSelectedChildId(childrenList[0].id || childrenList[0].ID);
             }, [childrenList, selectedChildId]);
 
-            const handleAddChild = (e) => {
+            const handleAddChild = async (e) => {
                 e.preventDefault();
-                if (users.find(u => u.username === newChild.user)) {
-                    return showToast("Username sudah dipakai", "error");
-                }
+                if (users.find(u => u.username === newChild.user || u.Username === newChild.user)) return showToast("Username dipakai", "error");
                 const childId = 'child_' + Date.now();
-                addUser({
-                    id: childId, 
-                    name: newChild.name, 
-                    username: newChild.user, 
-                    pin: newChild.pin, 
-                    role: 'anak', 
-                    parentId: user.id
-                });
-                setShowAddModal(false); 
-                setNewChild({ name: '', user: '', pin: '' });
+                await addUser({ id: childId, name: newChild.name, username: newChild.user, pin: newChild.pin, role: 'anak', parentId: user.id || user.ID });
+                setShowAddModal(false); setNewChild({ name: '', user: '', pin: '' });
                 setSelectedChildId(childId);
-                showToast("Akun anak berhasil ditambahkan!", "success");
+                showToast("Akun anak ditambahkan!", "success");
             };
 
-            const childActivities = activities.filter(a => a.childId === selectedChildId).sort((a,b) => a.time.localeCompare(b.time));
-            const childReports = reports.filter(r => childActivities.some(a => a.id === r.activityId));
-            const activeChild = users.find(u => u.id === selectedChildId);
+            const childActivities = activities.filter(a => a.childId === selectedChildId || a.ChildID === selectedChildId);
+            const childReports = reports.filter(r => childActivities.some(a => (a.id === r.activityId) || (a.id === r.JadwalID) || (a.ID === r.JadwalID)));
+            const activeChild = childrenList.find(u => (u.id === selectedChildId) || (u.ID === selectedChildId));
 
             return (
                 <div className="flex-1 flex flex-col h-full bg-slate-50 relative">
-                    {/* Top App Bar */}
                     <div className="bg-slate-900 text-white px-5 py-4 flex justify-between items-center shadow-md z-10 sticky top-0">
                         <div>
                             <h1 className="font-bold text-lg flex items-center gap-2"><Icon name="LayoutDashboard" size={20}/> Portal Ortu</h1>
-                            <p className="text-xs text-slate-400 mt-0.5">Masuk sebagai: {user.name}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">Masuk: {user.name || user.Name}</p>
                         </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto pb-24 fade-in h-full">
+                        {isSyncing && <div className="bg-blue-100 text-blue-700 text-xs text-center py-1">Memperbarui data dari server...</div>}
+                        
                         {currentTab === 'dashboard' && (
                             <div className="p-5">
-                                {/* Child Selector Component */}
                                 <div className="mb-6">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Pantau Anak</h2>
-                                    </div>
+                                    <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-3">Pantau Anak</h2>
                                     <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2">
-                                        {childrenList.map(child => (
-                                            <button key={child.id} onClick={() => setSelectedChildId(child.id)}
+                                        {childrenList.map(child => {
+                                            const cId = child.id || child.ID;
+                                            return (
+                                            <button key={cId} onClick={() => setSelectedChildId(cId)}
                                                 className={`flex-shrink-0 px-4 py-3 rounded-2xl border font-bold text-sm transition-all flex items-center gap-3 whitespace-nowrap
-                                                ${selectedChildId === child.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center overflow-hidden border-2 ${selectedChildId === child.id ? 'border-white/30' : 'border-slate-100'}`}>
-                                                    {child.photoProfile ? 
-                                                        <img src={child.photoProfile} className="w-full h-full object-cover"/> : 
-                                                        <Icon name="User" size={16}/>
-                                                    }
+                                                ${selectedChildId === cId ? 'bg-blue-600 text-white shadow-lg border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                                                <div className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden border bg-slate-100 text-slate-400">
+                                                    {(child.photoProfile || child.PhotoProfile) ? <img src={child.photoProfile || child.PhotoProfile} className="w-full h-full object-cover"/> : <Icon name="User" size={16}/>}
                                                 </div>
-                                                {child.name.split(' ')[0]}
+                                                {(child.name || child.Name).split(' ')[0]}
                                             </button>
-                                        ))}
-                                        {childrenList.length === 0 && (
-                                            <div className="text-sm text-slate-500 bg-white p-3 rounded-xl border w-full text-center">
-                                                Belum ada data anak. Tambahkan di Pengaturan.
-                                            </div>
-                                        )}
+                                        )})}
+                                        {childrenList.length === 0 && <div className="text-sm text-slate-500 bg-white p-3 rounded-xl border w-full text-center">Belum ada anak. Tambah di Pengaturan.</div>}
                                     </div>
                                 </div>
 
@@ -637,67 +486,48 @@
                                     <div className="space-y-4">
                                         <div className="bg-white rounded-2xl p-5 border shadow-sm flex items-center justify-between">
                                             <div>
-                                                <p className="text-sm text-slate-500 font-medium mb-1">Status Hari Ini</p>
-                                                <div className="text-2xl font-bold text-slate-800">
-                                                    {childReports.length} <span className="text-lg text-slate-400 font-normal">/ {childActivities.length} Selesai</span>
-                                                </div>
+                                                <p className="text-sm text-slate-500 font-medium mb-1">Status Laporan</p>
+                                                <div className="text-2xl font-bold text-slate-800">{childReports.length} <span className="text-lg text-slate-400 font-normal">/ {childActivities.length}</span></div>
                                             </div>
-                                            <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500">
-                                                <Icon name="Activity" size={28} />
-                                            </div>
+                                            <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500"><Icon name="Activity" size={28} /></div>
                                         </div>
 
-                                        <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider pt-2">Laporan Kegiatan</h3>
-                                        {childActivities.length === 0 ? (
-                                             <div className="bg-white p-6 rounded-2xl border text-center text-slate-500 text-sm">
-                                                Belum ada jadwal untuk anak ini.
-                                             </div>
-                                        ) : (
-                                            <div className="space-y-3">
-                                                {childActivities.map(act => {
-                                                    const report = reports.find(r => r.activityId === act.id);
-                                                    return (
-                                                        <div key={act.id} className="bg-white rounded-2xl border shadow-sm p-4">
-                                                            <div className="flex justify-between items-start mb-3">
-                                                                <div className="flex gap-3 items-center">
-                                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${report ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                                                                        <Icon name={act.icon} size={20} />
-                                                                    </div>
-                                                                    <div>
-                                                                        <h4 className="font-bold text-slate-800 text-sm">{act.title}</h4>
-                                                                        <p className="text-xs text-slate-500">{act.time}</p>
-                                                                    </div>
+                                        <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider pt-2">Laporan Harian</h3>
+                                        <div className="space-y-3">
+                                            {childActivities.map(act => {
+                                                const report = reports.find(r => (r.activityId === act.id) || (r.JadwalID === act.id) || (r.JadwalID === act.ID));
+                                                return (
+                                                    <div key={act.id || act.ID} className="bg-white rounded-2xl border shadow-sm p-4">
+                                                        <div className="flex justify-between items-start mb-3">
+                                                            <div className="flex gap-3 items-center">
+                                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${report ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                                                                    <Icon name={act.icon || act.Icon} size={20} />
                                                                 </div>
-                                                                {report ? 
-                                                                    <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-xs font-bold border border-emerald-100">SELESAI</span> : 
-                                                                    <span className="px-2 py-1 bg-slate-50 text-slate-500 rounded text-xs font-bold border">BELUM</span>
-                                                                }
+                                                                <div>
+                                                                    <h4 className="font-bold text-slate-800 text-sm">{act.title || act.Title}</h4>
+                                                                    <p className="text-xs text-slate-500">{act.time || act.Time}</p>
+                                                                </div>
                                                             </div>
-                                                            
-                                                            {report && (
-                                                                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex gap-2">
-                                                                    {report.photo && (
-                                                                        <button onClick={() => setSelectedPhoto(report.photo)} className="flex-1 bg-white border p-2 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center gap-2 hover:bg-slate-100 transition-colors">
-                                                                            <Icon name="Image" size={14} className="text-blue-500"/> Foto
-                                                                        </button>
-                                                                    )}
-                                                                    {report.gps && !report.gps.mock && (
-                                                                        <a href={`https://www.google.com/maps/search/?api=1&query=${report.gps.lat},${report.gps.lng}`} target="_blank" className="flex-1 bg-white border p-2 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center gap-2 hover:bg-slate-100 transition-colors">
-                                                                            <Icon name="MapPin" size={14} className="text-red-500"/> Lokasi
-                                                                        </a>
-                                                                    )}
-                                                                    {report.notes && (
-                                                                        <div className="flex-1 bg-white border p-2 rounded-lg text-xs text-slate-600 italic flex items-center justify-center line-clamp-1" title={report.notes}>
-                                                                            "{report.notes}"
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
+                                                            {report ? <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-xs font-bold border border-emerald-100">SELESAI</span> : <span className="px-2 py-1 bg-slate-50 text-slate-500 rounded text-xs font-bold border">BELUM</span>}
                                                         </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
+                                                        {report && (
+                                                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex gap-2">
+                                                                {(report.photo || report.PhotoURL) && (
+                                                                    <button onClick={() => setSelectedPhoto(report.photo || report.PhotoURL)} className="flex-1 bg-white border p-2 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center gap-2 hover:bg-slate-100">
+                                                                        <Icon name="Image" size={14} className="text-blue-500"/> Foto
+                                                                    </button>
+                                                                )}
+                                                                {(report.gps || (report.Lat && report.Lng)) && (
+                                                                    <a href={`https://www.google.com/maps/search/?api=1&query=${report.gps?.lat || report.Lat},${report.gps?.lng || report.Lng}`} target="_blank" className="flex-1 bg-white border p-2 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center gap-2 hover:bg-slate-100">
+                                                                        <Icon name="MapPin" size={14} className="text-red-500"/> Lokasi
+                                                                    </a>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -708,128 +538,69 @@
                                 <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-4">Galeri Foto Anak</h2>
                                 {selectedChildId ? (
                                     <div className="grid grid-cols-2 gap-3">
-                                        {childReports.filter(r => r.photo).map(report => {
-                                            const act = childActivities.find(a => a.id === report.activityId);
+                                        {childReports.filter(r => r.photo || r.PhotoURL).map(report => {
+                                            const photoSrc = report.photo || report.PhotoURL;
                                             return (
-                                                <div key={report.id} onClick={() => setSelectedPhoto(report.photo)} className="relative aspect-square rounded-2xl overflow-hidden shadow-sm border bg-slate-200 cursor-pointer group">
-                                                    <img src={report.photo} className="w-full h-full object-cover"/>
-                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-100">
-                                                        <div className="absolute bottom-2 left-2 right-2">
-                                                            <p className="text-white text-xs font-bold leading-tight">{act?.title}</p>
-                                                            <p className="text-slate-300 text-[10px]">
-                                                                {new Date(report.timestamp).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})}
-                                                            </p>
-                                                        </div>
+                                                <div key={report.id || report.ID} onClick={() => setSelectedPhoto(photoSrc)} className="relative aspect-square rounded-2xl overflow-hidden border bg-slate-200 cursor-pointer">
+                                                    <img src={photoSrc} className="w-full h-full object-cover"/>
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-2">
+                                                        <p className="text-white text-[10px] truncate w-full">{new Date(report.timestamp || report.Timestamp).toLocaleTimeString('id-ID')}</p>
                                                     </div>
                                                 </div>
                                             )
                                         })}
-                                        {childReports.filter(r => r.photo).length === 0 && (
-                                            <p className="text-sm text-slate-500 col-span-2 text-center mt-10">Belum ada foto yang dilaporkan.</p>
-                                        )}
+                                        {childReports.filter(r => r.photo || r.PhotoURL).length === 0 && <p className="text-sm text-slate-500 col-span-2 text-center mt-10">Belum ada foto yang dilaporkan.</p>}
                                     </div>
-                                ) : (
-                                    <p className="text-sm text-slate-500 text-center mt-10">Pilih anak terlebih dahulu di Dashboard.</p>
-                                )}
+                                ) : <p className="text-sm text-slate-500 text-center mt-10">Pilih anak terlebih dahulu.</p>}
                             </div>
                         )}
 
                         {currentTab === 'pengaturan' && (
                             <div className="p-5 space-y-6">
-                                <div>
-                                    <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-3">Profil Ortu</h3>
-                                    <div className="bg-white p-4 rounded-2xl border flex items-center gap-4 shadow-sm">
-                                        <div className="w-14 h-14 bg-slate-800 text-white rounded-full flex items-center justify-center font-bold text-xl">
-                                            {user.name.charAt(0)}
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-slate-800">{user.name}</p>
-                                            <p className="text-xs text-slate-500">Username: {user.username}</p>
-                                        </div>
-                                    </div>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Kelola Anak</h3>
+                                    <button onClick={() => setShowAddModal(true)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-blue-100"><Icon name="Plus" size={14}/> Tambah</button>
                                 </div>
-                                
-                                <div>
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Kelola Anak</h3>
-                                        <button onClick={() => setShowAddModal(true)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-blue-100 transition-colors">
-                                            <Icon name="Plus" size={14}/> Tambah
-                                        </button>
-                                    </div>
-                                    <div className="bg-white border rounded-2xl shadow-sm overflow-hidden divide-y">
-                                        {childrenList.map(child => (
-                                            <div key={child.id} className="p-4 flex justify-between items-center">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border">
-                                                         {child.photoProfile ? 
-                                                            <img src={child.photoProfile} className="w-full h-full rounded-full object-cover"/> : 
-                                                            <Icon name="User" size={18} className="text-slate-400"/>
-                                                        }
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-bold text-slate-700 text-sm">{child.name}</p>
-                                                        <p className="text-[10px] text-slate-400">User: {child.username} | PIN: {child.pin}</p>
-                                                    </div>
-                                                </div>
+                                <div className="bg-white border rounded-2xl shadow-sm divide-y">
+                                    {childrenList.map(child => (
+                                        <div key={child.id || child.ID} className="p-4 flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border">
+                                                {(child.photoProfile || child.PhotoProfile) ? <img src={child.photoProfile || child.PhotoProfile} className="w-full h-full rounded-full object-cover"/> : <Icon name="User" size={18} className="text-slate-400"/>}
                                             </div>
-                                        ))}
-                                        {childrenList.length === 0 && (
-                                            <div className="p-4 text-center text-sm text-slate-500">Belum ada akun anak.</div>
-                                        )}
-                                    </div>
+                                            <div>
+                                                <p className="font-bold text-slate-700 text-sm">{child.name || child.Name}</p>
+                                                <p className="text-[10px] text-slate-400">User: {child.username || child.Username} | PIN: {child.pin || child.PIN}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {childrenList.length === 0 && <div className="p-4 text-center text-sm text-slate-500">Belum ada akun anak.</div>}
                                 </div>
 
-                                <button onClick={onLogout} className="w-full bg-red-50 text-red-600 font-bold py-3.5 rounded-xl border border-red-100 flex items-center justify-center gap-2 active:scale-95 transition-transform">
-                                    <Icon name="LogOut" size={18} /> Keluar Admin
-                                </button>
-                                <p className="text-center text-xs font-medium text-slate-400 mt-6 pb-4">AnakCare Admin v1.0 (Demo)</p>
+                                <button onClick={onLogout} className="w-full bg-red-50 text-red-600 font-bold py-3.5 rounded-xl border border-red-100 flex items-center justify-center gap-2"><Icon name="LogOut" size={18} /> Keluar Admin</button>
                             </div>
                         )}
                     </div>
 
-                    {/* Photo Viewer Modal */}
                     {selectedPhoto && (
                         <div className="absolute inset-0 bg-black/90 z-[70] flex items-center justify-center p-4 fade-in" onClick={() => setSelectedPhoto(null)}>
-                            <button className="absolute top-6 right-6 text-white bg-white/20 p-2 rounded-full hover:bg-white/30 transition-colors">
-                                <Icon name="X" size={24}/>
-                            </button>
-                            <img src={selectedPhoto} className="max-w-full max-h-[85vh] rounded-lg object-contain" onClick={e=>e.stopPropagation()} alt="Bukti Kegiatan"/>
+                            <button className="absolute top-6 right-6 text-white bg-white/20 p-2 rounded-full"><Icon name="X" size={24}/></button>
+                            <img src={selectedPhoto} className="max-w-full max-h-[85vh] rounded-lg object-contain" onClick={e=>e.stopPropagation()}/>
                         </div>
                     )}
 
-                    {/* Add Child Modal */}
                     <Modal isOpen={showAddModal} title="Tambah Anak Baru" onClose={() => setShowAddModal(false)}>
                         <form onSubmit={handleAddChild} className="space-y-4 pt-2">
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 mb-1 block">Nama Anak</label>
-                                <input type="text" value={newChild.name} onChange={e=>setNewChild({...newChild, name:e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500" required placeholder="Cth: Budi Junior"/>
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 mb-1 block">Username Login</label>
-                                <input type="text" value={newChild.user} onChange={e=>setNewChild({...newChild, user:e.target.value.toLowerCase().replace(/\s/g,'')})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500" required placeholder="tanpa spasi"/>
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 mb-1 block">PIN (Min 4)</label>
-                                <input type="password" value={newChild.pin} onChange={e=>setNewChild({...newChild, pin:e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-blue-500" required minLength="4" placeholder="••••"/>
-                            </div>
-                            <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl mt-4 active:scale-95 transition-transform">Simpan Akun</button>
+                            <div><label className="text-xs font-bold text-slate-500 block">Nama Anak</label><input type="text" value={newChild.name} onChange={e=>setNewChild({...newChild, name:e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 mt-1" required/></div>
+                            <div><label className="text-xs font-bold text-slate-500 block">Username Login</label><input type="text" value={newChild.user} onChange={e=>setNewChild({...newChild, user:e.target.value.toLowerCase().replace(/\s/g,'')})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 mt-1" required/></div>
+                            <div><label className="text-xs font-bold text-slate-500 block">PIN</label><input type="password" value={newChild.pin} onChange={e=>setNewChild({...newChild, pin:e.target.value})} className="w-full bg-slate-50 border rounded-lg px-3 py-2 mt-1" required/></div>
+                            <button type="submit" className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl mt-4">Simpan Akun</button>
                         </form>
                     </Modal>
 
-                    {/* Admin Bottom Nav */}
-                    <div className="absolute bottom-0 left-0 w-full bg-white border-t px-6 py-2 flex justify-around items-center z-10 safe-area-bottom shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
-                        <button onClick={() => setCurrentTab('dashboard')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'dashboard' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                            <Icon name="LayoutDashboard" size={24} className={currentTab === 'dashboard' ? 'fill-blue-100' : ''} />
-                            <span className="text-[10px] font-bold">Dashboard</span>
-                        </button>
-                        <button onClick={() => setCurrentTab('galeri')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'galeri' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                            <Icon name="Images" size={24} className={currentTab === 'galeri' ? 'fill-blue-100' : ''} />
-                            <span className="text-[10px] font-bold">Cek Foto</span>
-                        </button>
-                        <button onClick={() => setCurrentTab('pengaturan')} className={`flex flex-col items-center gap-1 p-2 w-16 transition-colors ${currentTab === 'pengaturan' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
-                            <Icon name="Settings" size={24} className={currentTab === 'pengaturan' ? 'fill-blue-100' : ''} />
-                            <span className="text-[10px] font-bold">Pengaturan</span>
-                        </button>
+                    <div className="absolute bottom-0 left-0 w-full bg-white border-t px-6 py-2 flex justify-around items-center z-10 safe-area-bottom shadow-lg">
+                        <button onClick={() => setCurrentTab('dashboard')} className={`flex flex-col items-center gap-1 p-2 w-16 ${currentTab === 'dashboard' ? 'text-blue-600' : 'text-slate-400'}`}><Icon name="LayoutDashboard" size={24}/><span className="text-[10px] font-bold">Monitor</span></button>
+                        <button onClick={() => setCurrentTab('galeri')} className={`flex flex-col items-center gap-1 p-2 w-16 ${currentTab === 'galeri' ? 'text-blue-600' : 'text-slate-400'}`}><Icon name="Images" size={24}/><span className="text-[10px] font-bold">Galeri</span></button>
+                        <button onClick={() => setCurrentTab('pengaturan')} className={`flex flex-col items-center gap-1 p-2 w-16 ${currentTab === 'pengaturan' ? 'text-blue-600' : 'text-slate-400'}`}><Icon name="Settings" size={24}/><span className="text-[10px] font-bold">Setting</span></button>
                     </div>
                 </div>
             );
@@ -839,107 +610,93 @@
             const [toast, setToast] = useState(null);
             const showToast = (message, type = 'info') => setToast({ message, type });
 
-            // ⚠️ GANTI URL INI DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA! ⚠️
-            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGH3eW3JKzWnZ7jdG9OFn-E042sRhL0DCjOCj7Iept7imYpap9JhGggvzYXF4JDu8Ufg/exec';
+            // ⚠️ GANTI DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA! ⚠️
+            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwrV-4Uru2uHlf6mi_w4jhiXZFVofbcpCEg74x_o_PKGhTBGG6ANs0Xxc_IH96VPXjNEg/exec';
 
-            // Application State
-            const [currentUser, setCurrentUser] = useState(null);
+            // Local Storage Persistence untuk sesi Login
+            const [currentUser, setCurrentUser] = useState(() => {
+                const saved = localStorage.getItem('anakcare_user');
+                return saved ? JSON.parse(saved) : null;
+            });
+            
             const [users, setUsers] = useState([]);
             const [activities, setActivities] = useState([]);
             const [reports, setReports] = useState([]);
             const [isLoadingDb, setIsLoadingDb] = useState(true);
+            const [isSyncing, setIsSyncing] = useState(false);
 
-            // Ambil data dari Google Sheets saat aplikasi pertama kali dimuat
             useEffect(() => {
-                const fetchData = async () => {
-                    if (SCRIPT_URL === 'https://script.google.com/macros/s/AKfycbwGH3eW3JKzWnZ7jdG9OFn-E042sRhL0DCjOCj7Iept7imYpap9JhGggvzYXF4JDu8Ufg/exec') {
-                        // Fallback ke Mock Data jika URL belum diisi agar UI tetap bisa dilihat
-                        setUsers(MOCK_USERS);
-                        let initialActivities = [];
-                        MOCK_USERS.filter(u => u.role === 'anak').forEach(child => {
-                            initialActivities = [...initialActivities, ...createDefaultSchedule(child.id)];
-                        });
-                        setActivities(initialActivities);
-                        setIsLoadingDb(false);
-                        return;
-                    }
+                if (currentUser) localStorage.setItem('anakcare_user', JSON.stringify(currentUser));
+                else localStorage.removeItem('anakcare_user');
+            }, [currentUser]);
 
-                    try {
-                        // Mengambil data secara paralel dari Apps Script
-                        const [usersRes, jadwalRes, laporanRes] = await Promise.all([
-                            fetch(`${SCRIPT_URL}?action=getUsers`).then(r => r.json()),
-                            fetch(`${SCRIPT_URL}?action=getJadwal`).then(r => r.json()),
-                            fetch(`${SCRIPT_URL}?action=getLaporan`).then(r => r.json())
-                        ]);
-                        setUsers(usersRes);
-                        setActivities(jadwalRes);
-                        setReports(laporanRes);
-                    } catch (error) {
-                        console.error(error);
-                        showToast("Gagal koneksi ke database Server", "error");
-                    } finally {
-                        setIsLoadingDb(false);
+            const fetchData = async () => {
+                setIsSyncing(true);
+                try {
+                    const [uRes, jRes, lRes] = await Promise.all([
+                        fetch(`${SCRIPT_URL}?action=getUsers`).then(r => r.json()),
+                        fetch(`${SCRIPT_URL}?action=getJadwal`).then(r => r.json()),
+                        fetch(`${SCRIPT_URL}?action=getLaporan`).then(r => r.json())
+                    ]);
+                    // Jika sukses dari server asli
+                    setUsers(uRes); setActivities(jRes); setReports(lRes);
+                } catch (e) {
+                    // Fallback jika tidak ada internet/koneksi agar UI tetap jalan di preview
+                    if(users.length === 0) {
+                       setUsers([{ id: 'admin1', username: 'ortu', pin: '1234', role: 'ortu', name: 'Ayah / Ibu' }]);
                     }
-                };
-                
-                fetchData();
-            }, []);
-
-            // Data Mutators (Menyimpan ke Google Sheets & Update State Lokal)
-            const addReportToDb = (reportData) => {
-                const newReport = { id: 'rep_' + Date.now(), ...reportData, childId: currentUser.id };
-                setReports([...reports, newReport]); // Update UI seketika
-                
-                if (SCRIPT_URL !== 'MASUKKAN_URL_WEB_APP_GOOGLE_APPS_SCRIPT_ANDA_DISINI') {
-                    fetch(SCRIPT_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({ action: 'addLaporan', ...newReport })
-                    }).catch(e => showToast("Gagal simpan ke server", "error"));
+                } finally {
+                    setIsLoadingDb(false);
+                    setIsSyncing(false);
                 }
             };
 
-            const addUserToDb = (userData) => {
-                setUsers([...users, userData]);
+            useEffect(() => { fetchData(); }, []);
+
+            const addReportToDb = async (reportData) => {
+                const newReport = { id: 'rep_' + Date.now(), ...reportData, childId: currentUser.id || currentUser.ID };
+                setReports(prev => [...prev, newReport]); 
+                
+                try {
+                    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'addLaporan', ...newReport }) });
+                    await res.json();
+                    fetchData(); // Sync ulang
+                    return true;
+                } catch(e) {
+                    showToast("Gagal tersimpan ke server Google", "error");
+                    return false;
+                }
+            };
+
+            const addUserToDb = async (userData) => {
                 const defaultSchedules = createDefaultSchedule(userData.id);
-                setActivities([...activities, ...defaultSchedules]); // Update UI seketika
+                setUsers(prev => [...prev, userData]);
+                setActivities(prev => [...prev, ...defaultSchedules]); 
                 
-                if (SCRIPT_URL !== 'MASUKKAN_URL_WEB_APP_GOOGLE_APPS_SCRIPT_ANDA_DISINI') {
-                    fetch(SCRIPT_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({ action: 'addUser', ...userData })
-                    }).catch(e => showToast("Gagal simpan user ke server", "error"));
-                }
+                try {
+                    await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'addUser', ...userData }) });
+                    await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'addJadwalList', jadwalList: defaultSchedules }) });
+                    fetchData();
+                } catch(e) { showToast("Data disimpan offline", "info"); }
             };
 
-            const updateUserInDb = (userId, data) => {
-                const updatedUsers = users.map(u => {
-                    if (u.id === userId) {
-                        const updatedUser = { ...u, ...data };
-                        // Jika yang login update profilnya sendiri
-                        if (currentUser && currentUser.id === userId) {
-                            setCurrentUser(updatedUser);
-                        }
-                        return updatedUser;
-                    }
-                    return u;
-                });
-                setUsers(updatedUsers);
-
-                if (SCRIPT_URL !== 'MASUKKAN_URL_WEB_APP_GOOGLE_APPS_SCRIPT_ANDA_DISINI') {
-                    fetch(SCRIPT_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({ action: 'updateUser', id: userId, ...data })
-                    }).catch(e => showToast("Gagal update profil di server", "error"));
+            const updateUserInDb = async (userId, data) => {
+                setUsers(prev => prev.map(u => (u.id === userId || u.ID === userId) ? { ...u, ...data } : u));
+                if (currentUser && (currentUser.id === userId || currentUser.ID === userId)) {
+                    setCurrentUser(prev => ({ ...prev, ...data }));
                 }
+
+                try {
+                    await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'updateUser', id: userId, ...data }) });
+                    fetchData();
+                } catch(e) { showToast("Data disimpan offline", "info"); }
             };
 
             if (isLoadingDb) {
                 return (
-                    <div className="app-container flex items-center justify-center bg-slate-50">
-                        <div className="flex flex-col items-center">
-                            <Icon name="Loader" size={48} className="text-blue-600 animate-spin mb-4" />
-                            <p className="text-slate-500 font-medium">Memuat Database...</p>
-                        </div>
+                    <div className="app-container flex flex-col items-center justify-center bg-slate-50">
+                        <Icon name="Loader" size={48} className="text-blue-600 animate-spin mb-4" />
+                        <p className="text-slate-500 font-medium">Memuat Database...</p>
                     </div>
                 );
             }
@@ -947,33 +704,20 @@
             return (
                 <div className="app-container">
                     {!currentUser ? (
-                        <LoginScreen 
-                            onLogin={u => setCurrentUser(u)} 
-                            users={users} 
-                            showToast={showToast} 
-                        />
-                    ) : currentUser.role === 'anak' ? (
+                        <LoginScreen onLogin={u => setCurrentUser(u)} users={users} showToast={showToast} />
+                    ) : currentUser.role === 'anak' || currentUser.Role === 'anak' ? (
                         <ChildDashboard 
-                            user={currentUser} 
-                            activities={activities} 
-                            reports={reports} 
-                            onLogout={() => setCurrentUser(null)} 
-                            saveReport={addReportToDb} 
-                            updateUser={updateUserInDb} 
-                            showToast={showToast} 
+                            user={currentUser} activities={activities} reports={reports} 
+                            onLogout={() => setCurrentUser(null)} saveReport={addReportToDb} 
+                            updateUser={updateUserInDb} showToast={showToast} isSyncing={isSyncing}
                         />
                     ) : (
                         <ParentDashboard 
-                            user={currentUser} 
-                            users={users} 
-                            activities={activities} 
-                            reports={reports} 
-                            onLogout={() => setCurrentUser(null)} 
-                            addUser={addUserToDb} 
-                            showToast={showToast} 
+                            user={currentUser} users={users} activities={activities} reports={reports} 
+                            onLogout={() => setCurrentUser(null)} addUser={addUserToDb} 
+                            showToast={showToast} isSyncing={isSyncing}
                         />
                     )}
-                    
                     {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
                 </div>
             );
