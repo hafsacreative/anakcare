@@ -82,16 +82,9 @@
             { id: `act7_${childId}`, childId, title: 'Tidur Malam', time: 'Malam', icon: 'Moon', reqPhoto: true, reqGps: false }
         ];
 
-        // Helper untuk mengubah URL gambar lawas agar tetap bisa dibuka
+        // Helper untuk mengubah URL gambar - Dibuat jauh lebih sederhana & handal
         const getSafeImageUrl = (url) => {
             if (!url) return '';
-            // Jika URL adalah URL Drive versi lama, convert ke Thumbnail API yang lebih aman
-            if (url.includes('drive.google.com') && (url.includes('uc') || url.includes('export='))) {
-                const idMatch = url.match(/id=([a-zA-Z0-9_-]+)/);
-                if (idMatch && idMatch[1]) {
-                    return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w1000`;
-                }
-            }
             return url;
         };
 
@@ -816,8 +809,8 @@
             const [toast, setToast] = useState(null);
             const showToast = (message, type = 'info') => setToast({ message, type });
 
-            // ⚠️ GANTI DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA! ⚠️
-            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwsb8Rfygicaf_twuosauxw_DmZV02naEkhTgJfrog0yEV_EBp_qt_btllf_9Hm-EklYg/exec';
+            // ⚠️ PASTIKAN URL INI ADALAH DEPLOYMENT "WEB APP" TERBARU DENGAN AKSES "ANYONE" ⚠️
+            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyYcaC6xceXXb2h_P6ZDTKZQfYlv-ROFJHEaQAdv3IsLRYIgwSExwp93AhJzRbBEUyabQ/exec';
 
             const [currentUser, setCurrentUser] = useState(() => {
                 const saved = localStorage.getItem('anakcare_user_v2');
@@ -843,10 +836,19 @@
                         fetch(`${SCRIPT_URL}?action=getJadwal`).then(r => r.json()),
                         fetch(`${SCRIPT_URL}?action=getLaporan`).then(r => r.json())
                     ]);
-                    setUsers(uRes); setActivities(jRes); setReports(lRes);
+                    
+                    // Mencegah data kosong jika server lambat
+                    if (uRes && Array.isArray(uRes)) setUsers(uRes);
+                    if (jRes && Array.isArray(jRes)) setActivities(jRes);
+                    if (lRes && Array.isArray(lRes)) setReports(lRes);
+                    
                 } catch (e) {
-                    // Fallback jika tidak terkoneksi (Untuk keperluan preview awal)
-                    if(users.length === 0) setUsers([{ id: 'admin1', username: 'ortu', pin: '1234', role: 'ortu', name: 'Ayah / Ibu' }]);
+                    console.error("Fetch error:", e);
+                    // FIX: Jangan mereset data (menjadi hilang) jika hanya gagal fetch sesaat
+                    showToast("Gagal menyinkronkan data. Menggunakan data lokal.", "error");
+                    if(users.length === 0) {
+                        setUsers([{ id: 'admin1', username: 'ortu', pin: '1234', role: 'ortu', name: 'Ayah / Ibu' }]);
+                    }
                 } finally { setIsLoadingDb(false); setIsSyncing(false); }
             };
 
@@ -858,7 +860,8 @@
                 
                 try {
                     await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'addLaporan', ...newReport }) });
-                    fetchData();
+                    // fetchData() ditunda sedikit agar tidak menimpa state sebelum server siap
+                    setTimeout(() => { fetchData(); }, 1000); 
                     return true;
                 } catch(e) {
                     showToast("Laporan tersimpan di HP, gagal ke Server", "error");
@@ -872,10 +875,9 @@
                 setActivities(prev => [...prev, ...defaultSchedules]); 
                 
                 try {
-                    // Eksekusi berurutan agar Google Sheets tidak "Lock" (Bentrokan data)
                     await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'addUser', ...userData }) });
                     await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'addJadwalList', jadwalList: defaultSchedules }) });
-                    fetchData();
+                    setTimeout(() => { fetchData(); }, 1000);
                 } catch(e) { showToast("Data disimpan offline sementara", "info"); }
             };
 
@@ -887,7 +889,7 @@
 
                 try {
                     await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'updateUser', id: userId, ...data }) });
-                    fetchData();
+                    setTimeout(() => { fetchData(); }, 1000);
                 } catch(e) { showToast("Data disimpan offline sementara", "info"); }
             };
 
